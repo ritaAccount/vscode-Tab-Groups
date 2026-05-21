@@ -1,5 +1,7 @@
 import * as vscode from 'vscode';
 import { registerCommands } from './commands';
+import { ensureWorkspaceShortcutSettings, syncKeybindingsFromSettings } from './shortcutUtils';
+import { initializeShortcutSettings, registerShortcutsCommands } from './shortcutsWebview';
 import { TabGroupsManager } from './tabGroupsManager';
 import { GroupTreeItem, TabGroupsTreeProvider } from './treeProvider';
 import { CONFIG_RELATIVE_PATH } from './types';
@@ -35,6 +37,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   updateTreeViewMessage();
 
   registerCommands(context, manager, treeProvider, treeView);
+  registerShortcutsCommands(context);
 
   context.subscriptions.push(
     treeView,
@@ -46,6 +49,8 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
     vscode.workspace.onDidChangeWorkspaceFolders(async () => {
       updateTreeViewMessage();
       await reloadAll(context);
+      await initializeShortcutSettings();
+      await syncKeybindingsFromSettings();
     }),
     vscode.workspace.onDidSaveTextDocument(async (doc) => {
       if (isConfigFile(doc.uri)) {
@@ -55,6 +60,12 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   );
 
   await reloadAll(context);
+  await initializeShortcutSettings();
+  try {
+    await syncKeybindingsFromSettings();
+  } catch (error) {
+    console.error('Tab Groups: 同步 keybindings.json 失败', error);
+  }
 }
 
 export function deactivate(): void {

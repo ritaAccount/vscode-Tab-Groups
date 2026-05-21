@@ -3,9 +3,9 @@
 ## 1. 概述
 **插件名称**：Tab Groups  
 **扩展标识**：`Rita.tab-groups`（Publisher: `Rita`，package name: `tab-groups`）  
-**功能**：允许用户将 VSCode 中打开或未打开的文件组织成逻辑分组，支持手动添加和基于正则的自动扫描。分组配置可内嵌于分组，也可定义为全局配置供多个分组复用。
+**功能**：允许用户将 VSCode 中打开或未打开的文件组织成逻辑分组，支持手动添加和基于正则的自动扫描。分组配置可内嵌于分组，也可定义为全局配置供多个分组复用。v2 起支持可自定义快捷键（Webview 录入、工作区配置、同步至用户 keybindings）。
 
-**版本**：v1.0（MVP）  
+**版本**：v1.0（MVP）+ v2（快捷键）
 
 ---
 
@@ -57,6 +57,24 @@ interface TabGroupsData {
 
 **路径存储**：所有 `files` 使用相对于工作区根目录的路径（例如 `src/index.ts`），保证跨平台和可移植性。
 
+### 2.1 快捷键配置（v2）
+
+存储路径：`<workspaceRoot>/.vscode/settings.json` → `tabGroups.shortcuts`
+
+```typescript
+interface ShortcutSettings {
+  addToGroup: string;      // 「加入分组」，默认 ctrl+shift+i
+  removeFromGroup: string; // 「取消分组」，默认 ctrl+shift+o
+  createGroup: string;     // 「新建分组」，默认 ctrl+shift+u
+  deleteGroup: string;     // 「删除分组」，默认 ctrl+shift+p
+}
+```
+
+**解析与同步规则**：
+- 激活扩展时，若工作区无 `tabGroups.shortcuts`，写入 `DEFAULT_SHORTCUTS` 至 `.vscode/settings.json`
+- 保存自定义快捷键时，校验格式后更新工作区配置，并**同步至用户** `keybindings.json`（VS Code 不支持工作区级 keybindings 文件）
+- 实际生效的按键绑定在用户 keybindings 中；工作区 settings 为配置来源，可随项目提交
+
 ---
 
 ## 3. 用户界面与交互
@@ -78,7 +96,8 @@ interface TabGroupsData {
 ```
 
 **侧边栏标题栏（view/title）**：
-- 新建分组
+- 新建分组（需单根工作区）
+- **自定义快捷键**（v2，始终显示，无工作区限制；保存时需单根工作区）
 
 **分组节点右键菜单**（仅作用于当前分组，不在插件顶栏提供）：
 - 删除分组
@@ -100,7 +119,26 @@ interface TabGroupsData {
 
 ### 3.3 编辑器标签右键菜单
 - **加入分组** → 弹出快速选择，列出所有分组（显示分组名），选择后当前文件路径加入该分组的 `files` 数组（去重）。
-- **取消分组** → 弹出快速选择，显示当前文件所属的所有分组（如果属于多个），选择后从该分组中移除。
+- **取消分组** → 弹出快速选择，首项为 **全部分组**（v2，一次性从所有包含该文件的分组中移除）；其余项为当前文件所属的分组，选择后从该分组中移除。
+
+### 3.4 自定义快捷键 Webview（v2）
+
+命令：`tabGroups.customizeShortcuts`
+
+- 以 Webview 面板展示四条可绑定命令及当前快捷键
+- 点击快捷键框后**按键捕获**录入新组合
+- **保存**：写入工作区 `tabGroups.shortcuts`，并同步替换用户 `keybindings.json` 中本扩展的四条绑定
+- **恢复默认**：还原为 `DEFAULT_SHORTCUTS`（仅 Webview 内预览，需点保存才写入）
+- 无单根工作区时可打开面板预览，但无法保存
+
+**默认快捷键**：
+
+| 命令 | 默认按键 | `when` 条件 |
+|------|----------|-------------|
+| 加入分组 | `ctrl+shift+i` | `workspaceFolderCount == 1 && resourceScheme == file` |
+| 取消分组 | `ctrl+shift+o` | 同上 |
+| 新建分组 | `ctrl+shift+u` | `workspaceFolderCount == 1` |
+| 删除分组 | `ctrl+shift+p` | 同上 |
 
 ---
 
@@ -109,8 +147,8 @@ interface TabGroupsData {
 ### 4.1 分组管理
 | 操作 | 实现说明 |
 |------|----------|
-| 新建分组 | 弹出输入框获取名称，生成新 `id`，创建空 `files` 数组，默认无 config 和 configId（即手动分组）。保存 JSON。 |
-| 删除分组 | 从 `groups` 中移除；若该分组引用的全局配置不再被任何分组使用，**弹窗询问**是否一并删除该全局配置。 |
+| 新建分组 | 弹出输入框获取名称，生成新 `id`，创建空 `files` 数组，默认无 config 和 configId（即手动分组）。保存 JSON。支持快捷键触发（v2）。 |
+| 删除分组 | 从 `groups` 中移除；若该分组引用的全局配置不再被任何分组使用，**弹窗询问**是否一并删除该全局配置。快捷键触发时，若侧边栏未选中分组，弹出 QuickPick 选择目标分组（v2）。 |
 | 重命名 | 直接修改 `group.name`。 |
 | 展开分组 | 遍历该分组 `files`，调用 `vscode.window.showTextDocument` 依次打开；跳过不存在或无法打开的文件；非最后一个文件使用 `preserveFocus: true` 在后台打开。 |
 | 折叠分组 | 遍历 `vscode.window.tabGroups.all`，匹配属于该分组相对路径的标签页（含 `TabInputText` / `TabInputTextDiff`），调用 `vscode.window.tabGroups.close` 批量关闭。 |
@@ -126,11 +164,24 @@ interface TabGroupsData {
 
 ### 4.3 文件操作
 - **加入分组**：将当前活动标签的 URI 转换为相对路径，添加到目标分组的 `files` 数组（避免重复）。
-- **取消分组**：从指定分组的 `files` 中移除该路径。
+- **取消分组**：从指定分组的 `files` 中移除该路径；选 **全部分组** 时调用 `removeFileFromAllGroups()` 一次性移除（v2）。
 - **单击树视图文件**：调用 `vscode.window.showTextDocument` 打开。
 - **关闭标签不影响分组**：分组中的文件路径不会因为标签关闭而删除。用户必须显式取消分组或从树视图右键移除。
 
-### 4.4 数据持久化与同步
+### 4.4 快捷键管理（v2）
+
+| 场景 | 行为 |
+|------|------|
+| 打开自定义面板 | `tabGroups.customizeShortcuts`，Webview 展示四条命令及当前绑定 |
+| 录入快捷键 | Webview 内按键捕获，格式校验（修饰键 + 主键） |
+| 保存 | `workspace.getConfiguration().update('tabGroups.shortcuts', …, Workspace)` + `syncKeybindingsFromSettings()` |
+| 激活时初始化 | `ensureWorkspaceShortcutSettings()`：补全缺失的工作区配置项 |
+| keybindings 同步 | 读取用户 keybindings.json（JSONC 解析），移除本扩展四条旧绑定，写入新绑定 |
+| 冲突检测 | 不做（v2 定稿） |
+
+**实现文件**：`src/shortcutUtils.ts`、`src/shortcutsWebview.ts`、`media/shortcuts.*`
+
+### 4.5 数据持久化与同步
 - 任何修改（增删改分组、文件、配置）都立即写回 JSON 文件。
 - 启动插件时读取 JSON 文件，若文件不存在则创建空结构 `{ groups: [], configs: [] }`。
 - **外部修改自动重载（v1 已实现）**：
@@ -156,6 +207,9 @@ interface TabGroupsData {
 | 进度条 | `vscode.window.withProgress` |
 | 工作区事件 | `vscode.workspace.onDidChangeWorkspaceFolders` |
 | 状态栏消息 | `vscode.window.setStatusBarMessage` |
+| 工作区配置 | `vscode.workspace.getConfiguration` / `ConfigurationTarget.Workspace` |
+| Webview 面板 | `vscode.window.createWebviewPanel` |
+| 用户 keybindings 读写 | Node.js `fs` + JSONC 简易解析 |
 
 ---
 
@@ -166,7 +220,16 @@ interface TabGroupsData {
 - **依赖**：`@types/vscode`、`@types/node`
 - **ID 生成**：Node.js 内置 `crypto.randomUUID()`（v1 未引入 `uuid` 包）
 - **界面语言**：中文
-- **项目路径**：仓库根目录 `/plug-in/`（无子目录嵌套）
+- **项目路径**：仓库根目录（无子目录嵌套）
+
+**v2 新增源码**：
+
+```
+src/shortcutUtils.ts      # 快捷键配置读写、keybindings.json 同步
+src/shortcutsWebview.ts   # 自定义快捷键 Webview
+media/shortcuts.css
+media/shortcuts.js
+```
 
 ---
 
@@ -212,6 +275,15 @@ interface TabGroupsData {
 - [ ] 本地 `vsce package` 生成 `.vsix` 并安装测试
 - [ ] 发布到 Marketplace
 
+### 阶段 8：快捷键（v2）
+- [x] `tabGroups.customizeShortcuts` 命令与 `view/title` 按钮
+- [x] Webview 按键捕获与格式校验
+- [x] 工作区 `tabGroups.shortcuts` 读写与激活时默认值补全
+- [x] 同步用户 `keybindings.json`
+- [x] 四条默认可绑定命令（加入/取消分组、新建/删除分组）
+- [x] 取消分组 QuickPick 增加「全部分组」
+- [x] 删除分组快捷键无树选中时 QuickPick 选分组
+
 ---
 
 ## 8. 边界情况与注意事项
@@ -221,20 +293,25 @@ interface TabGroupsData {
 3. **正则表达式转义**：用户输入的正则需经过 `new RegExp()` 验证，无效时提示错误。
 4. **性能**：扫描大量文件时使用 `withProgress` 并支持取消。
 5. **配置文件热重载**：外部修改或编辑器内保存 `.vscode/tab-groups.json` 后自动重新加载（v1 已实现）。
+6. **快捷键同步（v2）**：同步 `keybindings.json` 时整文件 JSON 重写，原有注释可能丢失；`ctrl+shift+p` 与 VS Code 命令面板默认快捷键冲突，需用户自行改绑。
+7. **自定义快捷键保存**：需单根工作区；无工作区时 Webview 可预览不可保存。
 
 ---
 
-## 9. 后续迭代计划（v2 / v3）
+## 9. 后续迭代计划（v3）
 
-- **快捷键绑定**：快速将当前文件加入最近使用的分组
+- **最近使用分组快捷键**：快速将当前文件加入最近使用的分组（v2 已实现基础四条快捷键，此项仍待做）
 - **拖拽支持**：在树视图中拖拽文件到另一个分组
 - **自动分组**：根据打开的文件自动建议加入分组（基于规则）
 - **分组颜色/徽章**：在树视图中显示不同颜色图标
 - **跨工作区共享配置**：支持用户级全局分组（不依赖工作区）
+- **文件移动/重命名自动同步路径**
 
 ---
 
 ## 10. 附录：示例配置文件
+
+### tab-groups.json
 
 ```json
 {
@@ -268,6 +345,19 @@ interface TabGroupsData {
       "description": "后端 JS 文件"
     }
   ]
+}
+```
+
+### settings.json（v2 快捷键片段）
+
+```json
+{
+  "tabGroups.shortcuts": {
+    "addToGroup": "ctrl+shift+i",
+    "removeFromGroup": "ctrl+shift+o",
+    "createGroup": "ctrl+shift+u",
+    "deleteGroup": "ctrl+shift+p"
+  }
 }
 ```
 

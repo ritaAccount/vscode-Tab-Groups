@@ -1,0 +1,97 @@
+body {
+  padding: 16px 20px;
+  color: var(--vscode-foreground);
+  background: var(--vscode-editor-background);
+  font-family: var(--vscode-font-family);
+  font-size: var(--vscode-font-size);
+}
+
+h1 {
+  margin: 0 0 8px;
+  font-size: 1.2em;
+  font-weight: 600;
+}
+
+.hint {
+  margin: 0 0 20px;
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.5;
+}
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.label {
+  width: 96px;
+  flex-shrink: 0;
+}
+
+.shortcut-button {
+  min-width: 220px;
+  padding: 6px 10px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  cursor: pointer;
+  text-align: left;
+}
+
+.shortcut-button:hover {
+  border-color: var(--vscode-focusBorder);
+}
+
+.shortcut-button.recording {
+  outline: 1px solid var(--vscode-focusBorder);
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder);
+}
+
+.status {
+  min-height: 20px;
+  margin: 8px 0 16px;
+  color: var(--vscode-descriptionForeground);
+}
+
+.actions {
+  display: flex;
+  gap: 8px;
+}
+
+button.primary {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 2px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  cursor: pointer;
+}
+
+button.primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+button.secondary {
+  padding: 6px 14px;
+  border: 1px solid var(--vscode-button-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-button-secondaryBackground);
+  color: var(--vscode-button-secondaryForeground);
+  cursor: pointer;
+}
+
+button.secondary:hover {
+  background: var(--vscode-button-secondaryHoverBackground);
+}
+
+.warning {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border-left: 3px solid var(--vscode-editorWarning-foreground);
+  background: color-mix(in srgb, var(--vscode-editorWarning-foreground) 12%, transparent);
+  color: var(--vscode-foreground);
+  line-height: 1.5;
+}

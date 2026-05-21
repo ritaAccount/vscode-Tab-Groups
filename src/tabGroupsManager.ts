@@ -155,6 +155,20 @@ export class TabGroupsManager {
     await this.save();
   }
 
+  async removeFileFromAllGroups(filePath: string): Promise<number> {
+    let count = 0;
+    for (const group of this.data.groups) {
+      if (group.files.includes(filePath)) {
+        group.files = group.files.filter((f) => f !== filePath);
+        count++;
+      }
+    }
+    if (count > 0) {
+      await this.save();
+    }
+    return count;
+  }
+
   async setGroupConfig(groupId: string, config: InlineConfig): Promise<void> {
     const group = this.getGroup(groupId);
     if (!group) {

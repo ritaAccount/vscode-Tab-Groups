@@ -15,6 +15,40 @@
   ],
   "main": "./out/extension.js",
   "contributes": {
+    "configuration": {
+      "title": "Tab Groups",
+      "properties": {
+        "tabGroups.shortcuts": {
+          "type": "object",
+          "scope": "resource",
+          "description": "Tab Groups 命令快捷键（保存后会同步到 keybindings.json）",
+          "default": {
+            "addToGroup": "ctrl+shift+i",
+            "removeFromGroup": "ctrl+shift+o",
+            "createGroup": "ctrl+shift+u",
+            "deleteGroup": "ctrl+shift+p"
+          },
+          "properties": {
+            "addToGroup": {
+              "type": "string",
+              "description": "「加入分组」快捷键"
+            },
+            "removeFromGroup": {
+              "type": "string",
+              "description": "「取消分组」快捷键"
+            },
+            "createGroup": {
+              "type": "string",
+              "description": "「新建分组」快捷键"
+            },
+            "deleteGroup": {
+              "type": "string",
+              "description": "「删除分组」快捷键"
+            }
+          }
+        }
+      }
+    },
     "viewsContainers": {
       "activitybar": [
         {
@@ -93,6 +127,33 @@
       {
         "command": "tabGroups.removeFromGroup",
         "title": "取消分组"
+      },
+      {
+        "command": "tabGroups.customizeShortcuts",
+        "title": "自定义快捷键",
+        "icon": "$(keyboard)"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "tabGroups.addToGroup",
+        "key": "ctrl+shift+i",
+        "when": "workspaceFolderCount == 1 && resourceScheme == file"
+      },
+      {
+        "command": "tabGroups.removeFromGroup",
+        "key": "ctrl+shift+o",
+        "when": "workspaceFolderCount == 1 && resourceScheme == file"
+      },
+      {
+        "command": "tabGroups.createGroup",
+        "key": "ctrl+shift+u",
+        "when": "workspaceFolderCount == 1"
+      },
+      {
+        "command": "tabGroups.deleteGroup",
+        "key": "ctrl+shift+p",
+        "when": "workspaceFolderCount == 1"
       }
     ],
     "menus": {
@@ -100,6 +161,11 @@
         {
           "command": "tabGroups.createGroup",
           "when": "view == tabGroupsView && workspaceFolderCount == 1",
+          "group": "navigation"
+        },
+        {
+          "command": "tabGroups.customizeShortcuts",
+          "when": "view == tabGroupsView",
           "group": "navigation"
         }
       ],

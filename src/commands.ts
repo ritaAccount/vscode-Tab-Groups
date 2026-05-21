@@ -44,13 +44,26 @@ export function registerCommands(
       return;
     }
 
-    const groupItem = resolveGroupItem(item, treeView);
-    if (!groupItem) {
-      return;
+    let group = resolveGroupItem(item, treeView)?.group;
+    if (!group) {
+      const groups = manager.getGroups();
+      if (groups.length === 0) {
+        await vscode.window.showInformationMessage('暂无分组可删除。');
+        return;
+      }
+
+      const picked = await vscode.window.showQuickPick(
+        groups.map((entry) => ({ label: entry.name, group: entry })),
+        { placeHolder: '选择要删除的分组' },
+      );
+      if (!picked) {
+        return;
+      }
+      group = picked.group;
     }
 
     const confirm = await vscode.window.showWarningMessage(
-      `确定要删除分组「${groupItem.group.name}」吗？`,
+      `确定要删除分组「${group.name}」吗？`,
       { modal: true },
       '删除',
     );
@@ -58,8 +71,8 @@ export function registerCommands(
       return;
     }
 
-    const configId = await manager.deleteGroup(groupItem.group.id);
-    treeProvider.rememberCollapsed(groupItem.group.id);
+    const configId = await manager.deleteGroup(group.id);
+    treeProvider.rememberCollapsed(group.id);
 
     if (configId && !manager.isConfigReferenced(configId)) {
       const globalConfig = manager.getConfig(configId);
@@ -75,7 +88,7 @@ export function registerCommands(
     }
 
     treeProvider.refresh();
-    vscode.window.setStatusBarMessage(`已删除分组「${groupItem.group.name}」`, 3000);
+    vscode.window.setStatusBarMessage(`已删除分组「${group.name}」`, 3000);
   });
 
   register('tabGroups.renameGroup', async (item?: GroupTreeItem) => {
@@ -425,10 +438,20 @@ export function registerCommands(
     }
 
     const picked = await vscode.window.showQuickPick(
-      groups.map((group) => ({ label: group.name, groupId: group.id })),
+      [
+        { label: '全部分组', description: '一次性从所有分组中移除', groupId: '__all__' },
+        ...groups.map((group) => ({ label: group.name, groupId: group.id })),
+      ],
       { placeHolder: '选择要退出的分组' },
     );
     if (!picked) {
+      return;
+    }
+
+    if (picked.groupId === '__all__') {
+      const count = await manager.removeFileFromAllGroups(relativePath);
+      treeProvider.refresh();
+      vscode.window.setStatusBarMessage(`已将 ${relativePath} 从 ${count} 个分组中移除`, 3000);
       return;
     }
 
