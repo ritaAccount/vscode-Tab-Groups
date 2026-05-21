@@ -46,15 +46,18 @@ export function registerCommands(
 
     let group = resolveGroupItem(item, treeView)?.group;
     if (!group) {
-      const groups = manager.getGroups();
-      if (groups.length === 0) {
+      const rootGroups = manager.getRootGroups();
+      if (rootGroups.length === 0) {
         await vscode.window.showInformationMessage('暂无分组可删除。');
         return;
       }
 
       const picked = await vscode.window.showQuickPick(
-        groups.map((entry) => ({ label: entry.name, group: entry })),
-        { placeHolder: '选择要删除的分组' },
+        rootGroups.map((entry) => ({
+          label: entry.name,
+          group: entry,
+        })),
+        { placeHolder: '选择要删除的根级分组' },
       );
       if (!picked) {
         return;
@@ -62,8 +65,13 @@ export function registerCommands(
       group = picked.group;
     }
 
+    const hasChildren = group.children.length > 0;
+    const confirmMessage = hasChildren
+      ? `确定要删除分组「${group.name}」吗？其所有子分组也将一并删除。`
+      : `确定要删除分组「${group.name}」吗？`;
+
     const confirm = await vscode.window.showWarningMessage(
-      `确定要删除分组「${group.name}」吗？`,
+      confirmMessage,
       { modal: true },
       '删除',
     );
@@ -71,24 +79,56 @@ export function registerCommands(
       return;
     }
 
-    const configId = await manager.deleteGroup(group.id);
-    treeProvider.rememberCollapsed(group.id);
+    const descendantIds = manager.getDescendantIds(group.id);
+    const configIds = await manager.deleteGroup(group.id);
+    for (const id of descendantIds) {
+      treeProvider.rememberCollapsed(id);
+    }
 
-    if (configId && !manager.isConfigReferenced(configId)) {
-      const globalConfig = manager.getConfig(configId);
-      const configLabel = globalConfig?.description ?? configId;
-      const deleteConfig = await vscode.window.showWarningMessage(
-        `全局配置「${configLabel}」不再被任何分组引用，是否一并删除？`,
-        '删除配置',
-        '保留配置',
-      );
-      if (deleteConfig === '删除配置') {
-        await manager.deleteGlobalConfig(configId);
+    const uniqueConfigIds = [...new Set(configIds)];
+    for (const configId of uniqueConfigIds) {
+      if (!manager.isConfigReferenced(configId)) {
+        const globalConfig = manager.getConfig(configId);
+        const configLabel = globalConfig?.description ?? configId;
+        const deleteConfig = await vscode.window.showWarningMessage(
+          `全局配置「${configLabel}」不再被任何分组引用，是否一并删除？`,
+          '删除配置',
+          '保留配置',
+        );
+        if (deleteConfig === '删除配置') {
+          await manager.deleteGlobalConfig(configId);
+        }
       }
     }
 
     treeProvider.refresh();
     vscode.window.setStatusBarMessage(`已删除分组「${group.name}」`, 3000);
+  });
+
+  register('tabGroups.createSubGroup', async (item?: GroupTreeItem) => {
+    const folder = await ensureValidWorkspace();
+    if (!folder) {
+      return;
+    }
+
+    const groupItem = resolveGroupItem(item, treeView);
+    if (!groupItem) {
+      return;
+    }
+
+    const name = await vscode.window.showInputBox({
+      prompt: `在「${groupItem.group.name}」下新建子分组`,
+      placeHolder: '例如：组件',
+      validateInput: (value) => (value.trim() ? undefined : '分组名称不能为空'),
+    });
+    if (!name) {
+      return;
+    }
+
+    await manager.createSubGroup(groupItem.group.id, name.trim());
+    treeProvider.rememberExpanded(groupItem.group.id);
+    treeProvider.refresh();
+    vscode.window.setStatusBarMessage(`已在「${groupItem.group.name}」下创建子分组「${name.trim()}」`, 3000);
   });
 
   register('tabGroups.renameGroup', async (item?: GroupTreeItem) => {
@@ -127,13 +167,14 @@ export function registerCommands(
       return;
     }
 
-    const { files, name } = groupItem.group;
-    if (files.length === 0) {
+    const { name } = groupItem.group;
+    const filePaths = manager.getGroupFilePathsRecursive(groupItem.group.id);
+    if (filePaths.length === 0) {
       await vscode.window.showInformationMessage(`分组「${name}」中没有文件。`);
       return;
     }
 
-    const { opened, skipped } = await openGroupFiles(files);
+    const { opened, skipped } = await openGroupFiles(filePaths);
     if (opened === 0) {
       await vscode.window.showWarningMessage(`分组「${name}」中没有可打开的文件。`);
       return;
@@ -154,13 +195,14 @@ export function registerCommands(
       return;
     }
 
-    const { files, name } = groupItem.group;
-    if (files.length === 0) {
+    const { name } = groupItem.group;
+    const filePaths = manager.getGroupFilePathsRecursive(groupItem.group.id);
+    if (filePaths.length === 0) {
       await vscode.window.showInformationMessage(`分组「${name}」中没有文件。`);
       return;
     }
 
-    const closed = await closeGroupFiles(files);
+    const closed = await closeGroupFiles(filePaths);
     if (closed === 0) {
       await vscode.window.showInformationMessage(`分组「${name}」中没有已打开的标签页。`);
       return;
@@ -372,6 +414,44 @@ export function registerCommands(
     vscode.window.setStatusBarMessage(`已复制路径：${item.relativePath}`, 3000);
   });
 
+  register('tabGroups.renameFile', async (item?: FileTreeItem) => {
+    const folder = await ensureValidWorkspace();
+    if (!folder || !item) {
+      return;
+    }
+
+    const currentEntry = manager.getFileEntry(item.groupId, item.relativePath);
+    if (!currentEntry) {
+      return;
+    }
+
+    const newAlias = await vscode.window.showInputBox({
+      prompt: '请输入显示名称（仅影响侧边栏展示，不修改磁盘文件）',
+      value: currentEntry.alias,
+      validateInput: (value) => (value.trim() ? undefined : '显示名称不能为空'),
+    });
+    if (!newAlias) {
+      return;
+    }
+
+    let applyToAllGroups = false;
+    if (manager.countGroupsContainingFile(item.relativePath) > 1) {
+      const choice = await vscode.window.showInformationMessage(
+        '是否要修改所有组别里的别名？',
+        '是',
+        '否',
+      );
+      if (!choice) {
+        return;
+      }
+      applyToAllGroups = choice === '是';
+    }
+
+    await manager.renameFileAlias(item.groupId, item.relativePath, newAlias.trim(), applyToAllGroups);
+    treeProvider.refresh();
+    vscode.window.setStatusBarMessage(`已将 ${item.relativePath} 的显示名称改为「${newAlias.trim()}」`, 3000);
+  });
+
   register('tabGroups.addToGroup', async (uri?: vscode.Uri) => {
     const folder = await ensureValidWorkspace();
     if (!folder) {
@@ -397,7 +477,10 @@ export function registerCommands(
     }
 
     const picked = await vscode.window.showQuickPick(
-      groups.map((group) => ({ label: group.name, groupId: group.id })),
+      manager.getGroups().map((group) => ({
+        label: manager.getGroupPathLabel(group.id),
+        groupId: group.id,
+      })),
       { placeHolder: '选择要加入的分组' },
     );
     if (!picked) {
@@ -440,7 +523,10 @@ export function registerCommands(
     const picked = await vscode.window.showQuickPick(
       [
         { label: '全部分组', description: '一次性从所有分组中移除', groupId: '__all__' },
-        ...groups.map((group) => ({ label: group.name, groupId: group.id })),
+        ...groups.map((group) => ({
+          label: manager.getGroupPathLabel(group.id),
+          groupId: group.id,
+        })),
       ],
       { placeHolder: '选择要退出的分组' },
     );

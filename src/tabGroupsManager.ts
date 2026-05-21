@@ -1,8 +1,29 @@
 import * as vscode from 'vscode';
 import {
+  buildScannedFiles,
+  CONFIG_VERSION,
+  defaultAliasFromPath,
+  groupContainsPath,
+  isVersionLessThan,
+  normalizeGroupFiles,
+} from './fileEntryUtils';
+import {
+  collectAllFilePaths,
+  collectDescendantIds,
+  createEmptyGroup,
+  findParentGroupId,
+  getChildGroups,
+  getGroupPathLabel,
+  getRootGroups,
+  needsHierarchyMigration,
+  normalizeGroupHierarchy,
+  removeGroupReferences,
+} from './groupHierarchyUtils';
+import {
   CONFIG_RELATIVE_PATH,
   GlobalConfig,
   Group,
+  GroupFileEntry,
   InlineConfig,
   ManualConfig,
   RegexConfig,
@@ -13,7 +34,7 @@ import { getWorkspaceFolder } from './workspaceUtils';
 const DEFAULT_MANUAL_CONFIG: ManualConfig = { type: 'manual' };
 
 export class TabGroupsManager {
-  private data: TabGroupsData = { groups: [], configs: [] };
+  private data: TabGroupsData = { version: CONFIG_VERSION, groups: [], configs: [] };
   private readonly onDidChangeEmitter = new vscode.EventEmitter<void>();
   readonly onDidChange = this.onDidChangeEmitter.event;
 
@@ -28,27 +49,50 @@ export class TabGroupsManager {
   async load(): Promise<void> {
     const uri = this.getConfigUri();
     if (!uri) {
-      this.data = { groups: [], configs: [] };
+      this.data = { version: CONFIG_VERSION, groups: [], configs: [] };
       return;
     }
 
     try {
       const content = await vscode.workspace.fs.readFile(uri);
-      const parsed = JSON.parse(Buffer.from(content).toString('utf8')) as TabGroupsData;
-      this.data = {
-        groups: Array.isArray(parsed.groups) ? parsed.groups : [],
-        configs: Array.isArray(parsed.configs) ? parsed.configs : [],
-      };
+      const parsed = JSON.parse(Buffer.from(content).toString('utf8')) as Partial<TabGroupsData>;
+      const { data, migrated } = this.normalizeLoadedData(parsed);
+      this.data = data;
+      if (migrated) {
+        await this.save();
+        vscode.window.setStatusBarMessage('标签分组配置已升级', 3000);
+      }
     } catch (error) {
       if (error instanceof vscode.FileSystemError && error.code === 'FileNotFound') {
-        this.data = { groups: [], configs: [] };
+        this.data = { version: CONFIG_VERSION, groups: [], configs: [] };
         await this.save();
         return;
       }
-      this.data = { groups: [], configs: [] };
+      this.data = { version: CONFIG_VERSION, groups: [], configs: [] };
       const message = error instanceof Error ? error.message : String(error);
       vscode.window.showErrorMessage(`读取标签分组配置失败：${message}`);
     }
+  }
+
+  private normalizeLoadedData(parsed: Partial<TabGroupsData>): { data: TabGroupsData; migrated: boolean } {
+    const rawGroups = Array.isArray(parsed.groups) ? parsed.groups : [];
+    const hierarchyMigration = needsHierarchyMigration(rawGroups);
+    const versionMigration = isVersionLessThan(parsed.version, CONFIG_VERSION);
+
+    const groups = rawGroups.map((raw) => {
+      const normalized = normalizeGroupHierarchy(raw);
+      normalized.files = normalizeGroupFiles(raw.files);
+      return normalized;
+    });
+
+    return {
+      data: {
+        version: CONFIG_VERSION,
+        groups,
+        configs: Array.isArray(parsed.configs) ? parsed.configs : [],
+      },
+      migrated: hierarchyMigration || versionMigration,
+    };
   }
 
   async save(): Promise<void> {
@@ -64,6 +108,7 @@ export class TabGroupsManager {
       // directory may already exist
     }
 
+    this.data.version = CONFIG_VERSION;
     const content = JSON.stringify(this.data, null, 2);
     await vscode.workspace.fs.writeFile(uri, Buffer.from(content, 'utf8'));
     this.onDidChangeEmitter.fire();
@@ -71,6 +116,26 @@ export class TabGroupsManager {
 
   getGroups(): Group[] {
     return this.data.groups;
+  }
+
+  getRootGroups(): Group[] {
+    return getRootGroups(this.data.groups);
+  }
+
+  getChildGroups(parentId: string): Group[] {
+    const parent = this.getGroup(parentId);
+    if (!parent) {
+      return [];
+    }
+    return getChildGroups(this.data.groups, parent);
+  }
+
+  getParentGroupId(groupId: string): string | undefined {
+    return findParentGroupId(this.data.groups, groupId);
+  }
+
+  getGroupPathLabel(groupId: string): string {
+    return getGroupPathLabel(this.data.groups, groupId);
   }
 
   getConfigs(): GlobalConfig[] {
@@ -102,22 +167,45 @@ export class TabGroupsManager {
   }
 
   async createGroup(name: string): Promise<Group> {
-    const group: Group = {
-      id: crypto.randomUUID(),
-      name,
-      files: [],
-    };
+    const group = createEmptyGroup(name, 0);
     this.data.groups.push(group);
     await this.save();
     return group;
   }
 
-  async deleteGroup(id: string): Promise<string | undefined> {
-    const group = this.getGroup(id);
-    const configId = group?.configId;
-    this.data.groups = this.data.groups.filter((g) => g.id !== id);
+  async createSubGroup(parentId: string, name: string): Promise<Group | undefined> {
+    const parent = this.getGroup(parentId);
+    if (!parent) {
+      return undefined;
+    }
+
+    const group = createEmptyGroup(name, parent.level + 1);
+    this.data.groups.push(group);
+    parent.children.push(group.id);
     await this.save();
-    return configId;
+    return group;
+  }
+
+  async deleteGroup(id: string): Promise<string[]> {
+    const idsToDelete = collectDescendantIds(this.data.groups, id);
+    const configIds: string[] = [];
+
+    for (const groupId of idsToDelete) {
+      const group = this.getGroup(groupId);
+      if (group?.configId) {
+        configIds.push(group.configId);
+      }
+    }
+
+    const deleteSet = new Set(idsToDelete);
+    removeGroupReferences(this.data.groups, deleteSet);
+    this.data.groups = this.data.groups.filter((group) => !deleteSet.has(group.id));
+    await this.save();
+    return configIds;
+  }
+
+  getDescendantIds(groupId: string): string[] {
+    return collectDescendantIds(this.data.groups, groupId);
   }
 
   isConfigReferenced(configId: string): boolean {
@@ -138,10 +226,13 @@ export class TabGroupsManager {
     if (!group) {
       return false;
     }
-    if (group.files.includes(filePath)) {
+    if (groupContainsPath(group, filePath)) {
       return false;
     }
-    group.files.push(filePath);
+    group.files.push({
+      path: filePath,
+      alias: defaultAliasFromPath(filePath),
+    });
     await this.save();
     return true;
   }
@@ -151,15 +242,15 @@ export class TabGroupsManager {
     if (!group) {
       return;
     }
-    group.files = group.files.filter((f) => f !== filePath);
+    group.files = group.files.filter((file) => file.path !== filePath);
     await this.save();
   }
 
   async removeFileFromAllGroups(filePath: string): Promise<number> {
     let count = 0;
     for (const group of this.data.groups) {
-      if (group.files.includes(filePath)) {
-        group.files = group.files.filter((f) => f !== filePath);
+      if (groupContainsPath(group, filePath)) {
+        group.files = group.files.filter((file) => file.path !== filePath);
         count++;
       }
     }
@@ -167,6 +258,49 @@ export class TabGroupsManager {
       await this.save();
     }
     return count;
+  }
+
+  async renameFileAlias(
+    groupId: string,
+    filePath: string,
+    alias: string,
+    applyToAllGroups: boolean,
+  ): Promise<void> {
+    const trimmedAlias = alias.trim();
+    if (!trimmedAlias) {
+      throw new Error('EMPTY_ALIAS');
+    }
+
+    if (applyToAllGroups) {
+      for (const group of this.data.groups) {
+        for (const file of group.files) {
+          if (file.path === filePath) {
+            file.alias = trimmedAlias;
+          }
+        }
+      }
+    } else {
+      const group = this.getGroup(groupId);
+      const file = group?.files.find((entry) => entry.path === filePath);
+      if (!file) {
+        return;
+      }
+      file.alias = trimmedAlias;
+    }
+
+    await this.save();
+  }
+
+  countGroupsContainingFile(filePath: string): number {
+    return this.data.groups.filter((group) => groupContainsPath(group, filePath)).length;
+  }
+
+  getFileEntry(groupId: string, filePath: string): GroupFileEntry | undefined {
+    return this.getGroup(groupId)?.files.find((file) => file.path === filePath);
+  }
+
+  getGroupFilePathsRecursive(groupId: string): string[] {
+    return collectAllFilePaths(this.data.groups, groupId);
   }
 
   async setGroupConfig(groupId: string, config: InlineConfig): Promise<void> {
@@ -214,17 +348,17 @@ export class TabGroupsManager {
     await this.save();
   }
 
-  async updateGroupFiles(groupId: string, files: string[]): Promise<void> {
+  async updateGroupFiles(groupId: string, matchedPaths: string[]): Promise<void> {
     const group = this.getGroup(groupId);
     if (!group) {
       return;
     }
-    group.files = files;
+    group.files = buildScannedFiles(group.files, matchedPaths);
     await this.save();
   }
 
   getGroupsContainingFile(filePath: string): Group[] {
-    return this.data.groups.filter((g) => g.files.includes(filePath));
+    return this.data.groups.filter((group) => groupContainsPath(group, filePath));
   }
 
   getConfigFileUri(): vscode.Uri | undefined {

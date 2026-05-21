@@ -2,7 +2,7 @@
   "name": "tab-groups",
   "displayName": "Tab Groups",
   "description": "将 VSCode 中打开或未打开的文件组织成逻辑分组",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "publisher": "Rita",
   "engines": {
     "vscode": "^1.85.0"
@@ -81,6 +81,10 @@
         "title": "重命名分组"
       },
       {
+        "command": "tabGroups.createSubGroup",
+        "title": "新建子分组"
+      },
+      {
         "command": "tabGroups.expandAll",
         "title": "打开组内所有文件"
       },
@@ -119,6 +123,10 @@
       {
         "command": "tabGroups.copyPath",
         "title": "复制路径"
+      },
+      {
+        "command": "tabGroups.renameFile",
+        "title": "重命名"
       },
       {
         "command": "tabGroups.addToGroup",
@@ -186,6 +194,11 @@
           "group": "1_group@2"
         },
         {
+          "command": "tabGroups.createSubGroup",
+          "when": "view == tabGroupsView && (viewItem == group || viewItem == groupRegex) && workspaceFolderCount == 1",
+          "group": "1_group@25"
+        },
+        {
           "command": "tabGroups.expandAll",
           "when": "view == tabGroupsView && (viewItem == group || viewItem == groupRegex) && workspaceFolderCount == 1",
           "group": "1_group@3"
@@ -231,9 +244,14 @@
           "group": "1_file@2"
         },
         {
-          "command": "tabGroups.copyPath",
+          "command": "tabGroups.renameFile",
           "when": "view == tabGroupsView && (viewItem == file || viewItem == missingFile) && workspaceFolderCount == 1",
           "group": "1_file@3"
+        },
+        {
+          "command": "tabGroups.copyPath",
+          "when": "view == tabGroupsView && (viewItem == file || viewItem == missingFile) && workspaceFolderCount == 1",
+          "group": "1_file@4"
         }
       ],
       "editor/title/context": [

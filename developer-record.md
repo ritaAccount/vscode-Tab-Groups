@@ -92,7 +92,7 @@ src/
 - 拖拽、快捷键、分组颜色等（见 readme §9）
 
 
-## v2
+## v1.1
 在侧边栏视图工具栏添加“自定义快捷键”按钮（使用 view/title 菜单）。
 
 实现 tabGroups.customizeShortcuts 命令：
@@ -126,7 +126,7 @@ src/
 }
 9、还有疑问直接问，不要自己决定
 
-### v2 实现记录（2026-05）
+### v1.1 实现记录（2026-05）
 
 | 项 | 决策 |
 |----|------|
@@ -152,7 +152,7 @@ media/shortcuts.js        # 按键捕获逻辑
 
 **已知限制**：同步 `keybindings.json` 时使用 JSON 重写，文件中已有注释可能在首次同步后丢失。
 
-### v2 功能优化（2026-05）
+### v1.1 功能优化（2026-05）
 
 | 项 | 决策 |
 |----|------|
@@ -162,6 +162,39 @@ media/shortcuts.js        # 按键捕获逻辑
 
 **实现**：`TabGroupsManager.removeFileFromAllGroups()` + `tabGroups.removeFromGroup` 命令 QuickPick 扩展；`ShortcutSettings` 扩展 `createGroup` / `deleteGroup`；Webview 与 keybindings 同步一并更新。
 
-v3 功能优化
-1、给组内的文件进行重命名，未重命名显示文件名，重命名后显示重命名的名字
-2、分组里面还可以进行分组，支持无限分组
+3、有问题先问清楚再进行
+
+### v1.1 实现记录 — 文件别名（2026-05）
+
+| 项 | 决策 |
+|----|------|
+| 语义 | 仅侧边栏显示别名，不修改磁盘 |
+| 数据结构 | `files: [{ path, alias }]`；默认 `alias` 为文件名 |
+| 多分组同名路径 | 可各自不同；重命名时若路径存在于多个分组，询问是否同步所有组别 |
+| 入口 | 文件右键 →「重命名」 |
+| 展示 | `label`=alias；`description`/`tooltip`=完整相对路径 |
+| 正则扫描 | 覆盖列表时保留当前组内已有路径的 alias |
+| 配置版本 | `tab-groups.json` 增加 `version`；低于 1.1.0 或无版本时自动迁移并保存 |
+
+**新增源码**：`src/fileEntryUtils.ts`（迁移、别名工具）
+
+**未包含（留待 v1.1 下一阶段）**：嵌套分组（平行组 + level + children id 数组；新建/删除仍根级；批量打开/关闭含子组）
+
+### v1.1 实现记录 — 嵌套分组（2026-05）
+
+| 项 | 决策 |
+|----|------|
+| 存储 | 所有分组平行存放在 `groups[]`；每组含 `level`、`children`（子组 id 数组） |
+| 树展示 | 根级 `level === 0`；展开时按 `children` id 加载子组，再列本层 `files` |
+| 子组与文件 | 同一分组可同时有 `children` 与 `files` |
+| 正则配置 | 跟随当前组，与子组无关 |
+| 新建根分组 | 顶栏 / 快捷键 `createGroup` → `level: 0` |
+| 新建子分组 | 分组右键 →「新建子分组」→ `level = parent.level + 1` |
+| 删除 | 级联删除所有子孙组；快捷键删除仅选根级分组 |
+| 批量打开/关闭 | 递归包含所有子分组内的文件 |
+
+**新增源码**：`src/groupHierarchyUtils.ts`
+
+**迁移**：无 `level` / `children` 的旧配置自动补 `level: 0`、`children: []` 并保存
+
+---

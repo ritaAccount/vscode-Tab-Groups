@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { Group } from './types';
+import { Group, GroupFileEntry } from './types';
 import { TabGroupsManager } from './tabGroupsManager';
 import { fileExists } from './workspaceUtils';
 
@@ -10,30 +10,35 @@ export class GroupTreeItem extends vscode.TreeItem {
     public readonly group: Group,
     labelSuffix: string,
     isRegex: boolean,
+    hasChildren: boolean,
   ) {
     super(`${group.name}${labelSuffix}`, vscode.TreeItemCollapsibleState.Collapsed);
     this.contextValue = isRegex ? 'groupRegex' : 'group';
     this.iconPath = new vscode.ThemeIcon('folder');
     this.id = `group:${group.id}`;
+
+    if (!hasChildren) {
+      this.collapsibleState = vscode.TreeItemCollapsibleState.None;
+    }
   }
 }
 
 export class FileTreeItem extends vscode.TreeItem {
   constructor(
     public readonly groupId: string,
-    public readonly relativePath: string,
+    public readonly fileEntry: GroupFileEntry,
     exists: boolean,
   ) {
-    const fileName = relativePath.split('/').pop() ?? relativePath;
-    super(fileName, vscode.TreeItemCollapsibleState.None);
-    this.description = exists ? relativePath : `${relativePath}（不存在）`;
+    super(fileEntry.alias, vscode.TreeItemCollapsibleState.None);
+    this.relativePath = fileEntry.path;
+    this.description = exists ? fileEntry.path : `${fileEntry.path}（不存在）`;
     this.contextValue = exists ? 'file' : 'missingFile';
     this.iconPath = new vscode.ThemeIcon(
       'file',
       exists ? undefined : new vscode.ThemeColor('disabledForeground'),
     );
-    this.id = `file:${groupId}:${relativePath}`;
-    this.tooltip = relativePath;
+    this.id = `file:${groupId}:${fileEntry.path}`;
+    this.tooltip = fileEntry.path;
 
     if (exists) {
       this.command = {
@@ -43,6 +48,8 @@ export class FileTreeItem extends vscode.TreeItem {
       };
     }
   }
+
+  readonly relativePath: string;
 }
 
 export class TabGroupsTreeProvider implements vscode.TreeDataProvider<TreeElement> {
@@ -73,6 +80,11 @@ export class TabGroupsTreeProvider implements vscode.TreeDataProvider<TreeElemen
     if (element instanceof FileTreeItem) {
       return this.getGroupTreeItem(element.groupId);
     }
+
+    const parentId = this.manager.getParentGroupId(element.group.id);
+    if (parentId) {
+      return this.getGroupTreeItem(parentId);
+    }
     return undefined;
   }
 
@@ -82,24 +94,19 @@ export class TabGroupsTreeProvider implements vscode.TreeDataProvider<TreeElemen
 
   async getChildren(element?: TreeElement): Promise<TreeElement[]> {
     if (!element) {
-      return this.manager.getGroups().map((group) => {
-        const suffix = this.manager.getGroupLabelSuffix(group);
-        const isRegex = this.manager.isRegexGroup(group);
-        const item = new GroupTreeItem(group, suffix, isRegex);
-        if (this.expandedGroupIds.has(group.id)) {
-          item.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
-        }
-        return item;
-      });
+      return this.manager.getRootGroups().map((group) => this.createGroupTreeItem(group));
     }
 
     if (element instanceof GroupTreeItem) {
-      const children: FileTreeItem[] = [];
-      for (const filePath of element.group.files) {
-        const exists = await fileExists(filePath);
-        children.push(new FileTreeItem(element.group.id, filePath, exists));
+      const childGroups = this.manager.getChildGroups(element.group.id).map((group) => this.createGroupTreeItem(group));
+      const fileItems: FileTreeItem[] = [];
+
+      for (const fileEntry of element.group.files) {
+        const exists = await fileExists(fileEntry.path);
+        fileItems.push(new FileTreeItem(element.group.id, fileEntry, exists));
       }
-      return children;
+
+      return [...childGroups, ...fileItems];
     }
 
     return [];
@@ -110,10 +117,16 @@ export class TabGroupsTreeProvider implements vscode.TreeDataProvider<TreeElemen
     if (!group) {
       return undefined;
     }
+    return this.createGroupTreeItem(group);
+  }
+
+  private createGroupTreeItem(group: Group): GroupTreeItem {
     const suffix = this.manager.getGroupLabelSuffix(group);
     const isRegex = this.manager.isRegexGroup(group);
-    const item = new GroupTreeItem(group, suffix, isRegex);
-    if (this.expandedGroupIds.has(group.id)) {
+    const hasChildren = group.children.length > 0 || group.files.length > 0;
+    const item = new GroupTreeItem(group, suffix, isRegex, hasChildren);
+
+    if (this.expandedGroupIds.has(group.id) && hasChildren) {
       item.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
     }
     return item;

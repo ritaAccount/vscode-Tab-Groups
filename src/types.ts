@@ -21,12 +21,20 @@ export type GlobalConfig = (ManualConfig | RegexConfig) & {
 export interface Group {
   id: string;
   name: string;
-  files: string[];
+  level: number;
+  children: string[];
+  files: GroupFileEntry[];
   config?: InlineConfig;
   configId?: string;
 }
 
+export interface GroupFileEntry {
+  path: string;
+  alias: string;
+}
+
 export interface TabGroupsData {
+  version?: string;
   groups: Group[];
   configs: GlobalConfig[];
 }
