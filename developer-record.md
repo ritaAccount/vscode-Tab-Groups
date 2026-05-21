@@ -161,3 +161,6 @@ media/shortcuts.js        # 按键捕获逻辑
 | 删除分组（快捷键触发） | 无侧边栏选中时弹出 QuickPick 选择要删除的分组 |
 
 **实现**：`TabGroupsManager.removeFileFromAllGroups()` + `tabGroups.removeFromGroup` 命令 QuickPick 扩展；`ShortcutSettings` 扩展 `createGroup` / `deleteGroup`；Webview 与 keybindings 同步一并更新。
+
+v3 功能优化
+1、给组内的文件进行重命名，未重命名显示文件名，重命名后显示重命名的名字
