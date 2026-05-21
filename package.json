@@ -1,0 +1,197 @@
+{
+  "name": "tab-groups",
+  "displayName": "Tab Groups",
+  "description": "将 VSCode 中打开或未打开的文件组织成逻辑分组",
+  "version": "1.0.0",
+  "publisher": "Rita",
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [
+    "onStartupFinished"
+  ],
+  "main": "./out/extension.js",
+  "contributes": {
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "tab-groups",
+          "title": "Tab Groups",
+          "icon": "$(list-selection)"
+        }
+      ]
+    },
+    "views": {
+      "tab-groups": [
+        {
+          "id": "tabGroupsView",
+          "name": "标签分组"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "tabGroups.createGroup",
+        "title": "新建分组",
+        "icon": "$(add)"
+      },
+      {
+        "command": "tabGroups.deleteGroup",
+        "title": "删除分组"
+      },
+      {
+        "command": "tabGroups.renameGroup",
+        "title": "重命名分组"
+      },
+      {
+        "command": "tabGroups.expandAll",
+        "title": "打开组内所有文件"
+      },
+      {
+        "command": "tabGroups.collapseAll",
+        "title": "关闭组内所有文件"
+      },
+      {
+        "command": "tabGroups.setManual",
+        "title": "设置为手动"
+      },
+      {
+        "command": "tabGroups.setRegex",
+        "title": "设置正则（内嵌）"
+      },
+      {
+        "command": "tabGroups.setGlobalConfig",
+        "title": "引用全局配置"
+      },
+      {
+        "command": "tabGroups.manageGlobalConfigs",
+        "title": "管理全局配置"
+      },
+      {
+        "command": "tabGroups.scanFiles",
+        "title": "扫描文件"
+      },
+      {
+        "command": "tabGroups.openFile",
+        "title": "打开文件"
+      },
+      {
+        "command": "tabGroups.removeFile",
+        "title": "从分组中移除"
+      },
+      {
+        "command": "tabGroups.copyPath",
+        "title": "复制路径"
+      },
+      {
+        "command": "tabGroups.addToGroup",
+        "title": "加入分组"
+      },
+      {
+        "command": "tabGroups.removeFromGroup",
+        "title": "取消分组"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "tabGroups.createGroup",
+          "when": "view == tabGroupsView && workspaceFolderCount == 1",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "tabGroups.createGroup",
+          "when": "view == tabGroupsView && workspaceFolderCount == 1",
+          "group": "inline"
+        },
+        {
+          "command": "tabGroups.deleteGroup",
+          "when": "view == tabGroupsView && viewItem == group && workspaceFolderCount == 1",
+          "group": "1_group@1"
+        },
+        {
+          "command": "tabGroups.renameGroup",
+          "when": "view == tabGroupsView && viewItem == group && workspaceFolderCount == 1",
+          "group": "1_group@2"
+        },
+        {
+          "command": "tabGroups.expandAll",
+          "when": "view == tabGroupsView && (viewItem == group || viewItem == groupRegex) && workspaceFolderCount == 1",
+          "group": "1_group@3"
+        },
+        {
+          "command": "tabGroups.collapseAll",
+          "when": "view == tabGroupsView && (viewItem == group || viewItem == groupRegex) && workspaceFolderCount == 1",
+          "group": "1_group@4"
+        },
+        {
+          "command": "tabGroups.setManual",
+          "when": "view == tabGroupsView && viewItem == group && workspaceFolderCount == 1",
+          "group": "2_config@1"
+        },
+        {
+          "command": "tabGroups.setRegex",
+          "when": "view == tabGroupsView && viewItem == group && workspaceFolderCount == 1",
+          "group": "2_config@2"
+        },
+        {
+          "command": "tabGroups.setGlobalConfig",
+          "when": "view == tabGroupsView && viewItem == group && workspaceFolderCount == 1",
+          "group": "2_config@3"
+        },
+        {
+          "command": "tabGroups.manageGlobalConfigs",
+          "when": "view == tabGroupsView && viewItem == group && workspaceFolderCount == 1",
+          "group": "2_config@4"
+        },
+        {
+          "command": "tabGroups.scanFiles",
+          "when": "view == tabGroupsView && viewItem == groupRegex && workspaceFolderCount == 1",
+          "group": "3_scan@1"
+        },
+        {
+          "command": "tabGroups.openFile",
+          "when": "view == tabGroupsView && viewItem == file && workspaceFolderCount == 1",
+          "group": "1_file@1"
+        },
+        {
+          "command": "tabGroups.removeFile",
+          "when": "view == tabGroupsView && (viewItem == file || viewItem == missingFile) && workspaceFolderCount == 1",
+          "group": "1_file@2"
+        },
+        {
+          "command": "tabGroups.copyPath",
+          "when": "view == tabGroupsView && (viewItem == file || viewItem == missingFile) && workspaceFolderCount == 1",
+          "group": "1_file@3"
+        }
+      ],
+      "editor/title/context": [
+        {
+          "command": "tabGroups.addToGroup",
+          "when": "workspaceFolderCount == 1 && resourceScheme == file",
+          "group": "navigation"
+        },
+        {
+          "command": "tabGroups.removeFromGroup",
+          "when": "workspaceFolderCount == 1 && resourceScheme == file",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^20.11.0",
+    "@types/vscode": "^1.85.0",
+    "typescript": "^5.3.3"
+  }
+}
