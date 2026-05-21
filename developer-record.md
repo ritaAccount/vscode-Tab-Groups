@@ -1,7 +1,7 @@
 # Tab Groups — 开发记录
 
 > 记录各版本开发过程中人类与 AI 的决策、澄清与实现偏差修正，供后续版本参考。  
-> 产品需求与 API 说明见 [readme.md](./readme.md)。
+> 产品需求与 API 说明见 [developer-readme.md](./developer-readme.md)。
 
 ---
 

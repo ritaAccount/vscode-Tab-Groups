@@ -1,240 +1,109 @@
-# VSCode 标签分组插件 - 开发文档（基于最新配置模型）
+# Tab Groups
 
-## 1. 概述
-**插件名称**：Tab Groups  
-**扩展标识**：`Rita.tab-groups`（Publisher: `Rita`，package name: `tab-groups`）  
-**功能**：允许用户将 VSCode 中打开或未打开的文件组织成逻辑分组，支持手动添加和基于正则的自动扫描。分组配置可内嵌于分组，也可定义为全局配置供多个分组复用。
-
-**版本**：v1.0（MVP）  
+在 VS Code 里把文件按「分组」整理起来——不管文件当前有没有打开，都能一键找到、批量打开或关闭。
 
 ---
 
-## 2. 数据结构设计（JSON Schema）
-存储路径：`<workspaceRoot>/.vscode/tab-groups.json`
-```typescript
-// 基础配置类型
-interface BaseConfig {
-  type: 'manual' | 'regex';
-}
-interface ManualConfig extends BaseConfig {
-  type: 'manual';
-}
+## 它能做什么
 
-interface RegexConfig extends BaseConfig {
-  type: 'regex';
-  regex: string;        // 正则表达式字符串
-}
-
-// 分组内嵌配置（不需要 id）
-type InlineConfig = ManualConfig | RegexConfig;
-
-// 全局配置（需要唯一 id）
-interface GlobalConfig extends InlineConfig {
-  id: string;
-  description?: string; // 可选的说明
-}
-
-// 分组定义
-interface Group {
-  id: string;           // 唯一标识（UUID 或自增）
-  name: string;         // 显示名称
-  files: string[];      // 文件相对路径数组（相对于工作区根目录）
-  config?: InlineConfig; // 内嵌配置，优先级高于 configId
-  configId?: string;     // 引用全局配置的 id
-}
-
-// 根数据结构
-interface TabGroupsData {
-  groups: Group[];
-  configs: GlobalConfig[];
-}
-```
-
-**解析规则**：
-- 如果 `group.config` 存在 → 使用内嵌配置
-- 否则如果 `group.configId` 存在 → 在 `configs` 中查找匹配的全局配置
-- 否则 → 视为 `{ type: "manual" }`（默认手动分组）
-
-**路径存储**：所有 `files` 使用相对于工作区根目录的路径（例如 `src/index.ts`），保证跨平台和可移植性。
+- **手动分组**：自己挑选文件，放进不同分组（例如「前端页面」「接口文档」）
+- **正则自动分组**：用规则自动扫描项目里的文件，适合按目录或后缀批量归类
+- **一键打开 / 关闭**：右键分组，一次打开或关闭该组里的所有文件
+- **标签页快捷操作**：在编辑器标签上右键，快速「加入分组」或「取消分组」
+- **配置保存在项目里**：分组数据存在 `.vscode/tab-groups.json`，可随项目一起提交到 Git
 
 ---
 
-## 3. 用户界面与交互
+## 快速开始
 
-### 3.1 活动栏（Activity Bar）
-- 图标：`$(list-selection)`（内置 codicon）
-- 点击后打开侧边栏视图
+1. 安装扩展 **Tab Groups**（发布者：Rita）
+2. 用 VS Code **打开一个文件夹**作为工作区（需为单根工作区，见下方说明）
+3. 点击左侧活动栏的 **Tab Groups** 图标，打开「标签分组」侧边栏
+4. 点击侧边栏顶部的 **＋** 或右键空白处，**新建分组**
+5. 在编辑器中打开某个文件，在**标签页上右键** → **加入分组**，选择目标分组
 
-### 3.2 侧边栏树视图
-**结构**：
+分组和文件会显示在侧边栏树视图中，点击文件名即可打开。
+
+---
+
+## 界面说明
+
+侧边栏大致如下：
+
 ```
-📁 我的手动分组（手动）        <-- 分组节点，括号内显示配置类型
+📁 我的手动分组（手动）
    📄 src/index.ts
    📄 src/utils.ts
-📁 后端逻辑（引用：backend-regex）  <-- 显示引用的全局配置名
+📁 后端逻辑（引用：backend-regex）
    📄 server.js
-📁 独立正则组（正则）            <-- 内嵌正则
-   📄 db.js
+📁 前端组件（正则）
+   📄 components/Button.tsx
 ```
 
-**侧边栏标题栏（view/title）**：
-- 新建分组
-
-**分组节点右键菜单**（仅作用于当前分组，不在插件顶栏提供）：
-- 删除分组
-- 重命名分组
-- **展开分组**（打开组内所有文件）：一键在编辑器中打开该分组 `files` 中的全部文件；不存在的文件跳过；最后一个文件获得焦点
-- **折叠分组**（关闭组内所有文件）：一键关闭编辑器中属于该分组的所有已打开标签页
-- 设置为手动
-- 设置正则（内嵌）
-- 引用全局配置（弹出列表选择已有全局配置）
-- 管理全局配置（打开 `.vscode/tab-groups.json` 供手动编辑）
-- 扫描文件（仅当分组配置为正则时有效，无论内嵌还是引用）
-
-> **注意**：「展开/折叠分组」指的是**编辑器标签页**的批量打开/关闭，**不是**侧边栏树节点的展开/折叠。树节点仍可通过点击分组名称旁的箭头手动展开/折叠以查看文件列表。
-
-**文件节点右键菜单**：
-- 打开文件
-- 从分组中移除
-- 复制路径
-
-### 3.3 编辑器标签右键菜单
-- **加入分组** → 弹出快速选择，列出所有分组（显示分组名），选择后当前文件路径加入该分组的 `files` 数组（去重）。
-- **取消分组** → 弹出快速选择，显示当前文件所属的所有分组（如果属于多个），选择后从该分组中移除。
+- 分组名称后的括号表示分组类型：**手动**、**正则**，或引用的全局配置名
+- 文件若已不存在（被移动或删除），会以灰色显示并标注「（不存在）」，可右键移除
 
 ---
 
-## 4. 核心功能详解
+## 常用操作
 
-### 4.1 分组管理
-| 操作 | 实现说明 |
-|------|----------|
-| 新建分组 | 弹出输入框获取名称，生成新 `id`，创建空 `files` 数组，默认无 config 和 configId（即手动分组）。保存 JSON。 |
-| 删除分组 | 从 `groups` 中移除；若该分组引用的全局配置不再被任何分组使用，**弹窗询问**是否一并删除该全局配置。 |
-| 重命名 | 直接修改 `group.name`。 |
-| 展开分组 | 遍历该分组 `files`，调用 `vscode.window.showTextDocument` 依次打开；跳过不存在或无法打开的文件；非最后一个文件使用 `preserveFocus: true` 在后台打开。 |
-| 折叠分组 | 遍历 `vscode.window.tabGroups.all`，匹配属于该分组相对路径的标签页（含 `TabInputText` / `TabInputTextDiff`），调用 `vscode.window.tabGroups.close` 批量关闭。 |
+### 侧边栏 · 分组
 
-### 4.2 配置管理
-| 场景 | 行为 |
+| 操作 | 说明 |
 |------|------|
-| 设置为手动 | 删除 `group.config` 和 `group.configId`（即无配置）。 |
-| 设置正则（内嵌） | 弹出输入框输入正则，设置 `group.config = { type: "regex", regex: "..." }`，删除 `configId`。 |
-| 引用全局配置 | 弹出快速选择列表（来自 `configs` 数组），选择后设置 `group.configId = selectedId`，删除 `group.config`。如果无可用全局配置，提示先创建。 |
-| 管理全局配置 | 直接打开 `.vscode/tab-groups.json`，并滚动定位到 `configs` 区域，供用户手动编辑 JSON（v1 不提供增删改 UI）。 |
-| 从正则配置扫描文件 | 获取分组有效正则（内嵌或引用），调用 `vscode.workspace.findFiles('**/*')`，过滤匹配的文件路径，更新 `group.files`（**覆盖**原有列表）。显示进度条。 |
+| 新建分组 | 侧边栏标题栏 **＋**，或右键空白处 |
+| 重命名 / 删除 | 右键分组名称 |
+| 打开组内所有文件 | 右键分组 → **打开组内所有文件**（在编辑器中批量打开） |
+| 关闭组内所有文件 | 右键分组 → **关闭组内所有文件**（关闭该组已打开的标签页） |
+| 设置为手动 | 改为手动维护文件列表 |
+| 设置正则（内嵌） | 为当前分组单独设置匹配规则 |
+| 引用全局配置 | 复用已在配置文件中定义好的规则 |
+| 扫描文件 | 仅正则分组可用，按规则重新扫描并更新文件列表 |
 
-### 4.3 文件操作
-- **加入分组**：将当前活动标签的 URI 转换为相对路径，添加到目标分组的 `files` 数组（避免重复）。
-- **取消分组**：从指定分组的 `files` 中移除该路径。
-- **单击树视图文件**：调用 `vscode.window.showTextDocument` 打开。
-- **关闭标签不影响分组**：分组中的文件路径不会因为标签关闭而删除。用户必须显式取消分组或从树视图右键移除。
+> **说明**：「打开 / 关闭组内所有文件」针对的是**编辑器标签页**，不是侧边栏树节点的展开/折叠。
 
-### 4.4 数据持久化与同步
-- 任何修改（增删改分组、文件、配置）都立即写回 JSON 文件。
-- 启动插件时读取 JSON 文件，若文件不存在则创建空结构 `{ groups: [], configs: [] }`。
-- **外部修改自动重载（v1 已实现）**：
-  - 监听 `vscode.workspace.createFileSystemWatcher` 监控配置文件变更；
-  - 监听 `vscode.workspace.onDidSaveTextDocument`，当用户保存 `tab-groups.json` 时重新加载。
-- 监听 `vscode.workspace.onDidChangeWorkspaceFolders` 在工作区切换时重新加载。
+### 侧边栏 · 文件
 
----
+| 操作 | 说明 |
+|------|------|
+| 打开文件 | 单击文件名，或右键 → **打开文件** |
+| 从分组中移除 | 右键文件 → **从分组中移除** |
+| 复制路径 | 右键文件 → **复制路径** |
 
-## 5. VSCode API 使用清单
+### 编辑器标签页
 
-| 用途 | API |
-|------|-----|
-| 注册命令 | `vscode.commands.registerCommand` |
-| 树视图 | `vscode.window.createTreeView` + `TreeDataProvider` |
-| 右键菜单贡献 | `package.json` 的 `contributes.menus` |
-| 快速选择 | `vscode.window.showQuickPick` |
-| 输入框 | `vscode.window.showInputBox` |
-| 获取当前文件 URI | `vscode.window.activeTextEditor.document.uri` |
-| 打开/关闭组内文件 | `vscode.window.showTextDocument` / `vscode.window.tabGroups.close` |
-| 遍历工作区文件 | `vscode.workspace.findFiles` |
-| 文件读写 | `vscode.workspace.fs` 或 Node.js `fs` (需 `@types/node`) |
-| 进度条 | `vscode.window.withProgress` |
-| 工作区事件 | `vscode.workspace.onDidChangeWorkspaceFolders` |
-| 状态栏消息 | `vscode.window.setStatusBarMessage` |
+在文件标签上右键：
+
+- **加入分组** — 将当前文件加入所选分组（同一文件可属于多个分组）
+- **取消分组** — 从所选分组中移除当前文件
+
+关闭编辑器标签**不会**把文件从分组里删掉；需要显式「取消分组」或从侧边栏移除。
 
 ---
 
-## 6. 开发环境与语言
+## 三种分组方式
 
-- **语言**：TypeScript
-- **构建**：`tsc` 编译至 `out/`
-- **依赖**：`@types/vscode`、`@types/node`
-- **ID 生成**：Node.js 内置 `crypto.randomUUID()`（v1 未引入 `uuid` 包）
-- **界面语言**：中文
-- **项目路径**：仓库根目录 `/plug-in/`（无子目录嵌套）
+### 1. 手动分组（默认）
 
----
+新建分组后，通过「加入分组」或侧边栏操作逐个添加文件，适合固定、少量文件的集合。
 
-## 7. 实现步骤（MVP）
+### 2. 正则分组（内嵌）
 
-### 阶段 1：项目骨架
-- [x] 生成 VSCode 插件项目
-- [x] 配置 `package.json`：`activationEvents`、`contributes.viewsContainers`、`contributes.views`、`contributes.commands`、`contributes.menus`
-- [x] 创建 `src/types.ts` 定义接口
+右键分组 → **设置正则（内嵌）**，输入正则表达式，再 **扫描文件**，扩展会搜索整个工作区并更新该分组的文件列表。
 
-### 阶段 2：数据管理模块
-- [x] 实现 `TabGroupsManager` 类：
-  - `load()`、`save()`
-  - `getGroups()`、`getConfigs()`
-  - `createGroup(name)`、`deleteGroup(id)`、`renameGroup(id, newName)`
-  - `addFileToGroup(groupId, filePath)`、`removeFileFromGroup(groupId, filePath)`
-  - `setGroupConfig(groupId, config)`、`setGroupConfigId(groupId, configId)`、`clearGroupConfig(groupId)`
-  - `createGlobalConfig(config)`、`deleteGlobalConfig(id)`
-  - `getEffectiveConfig(group)` 返回解析后的配置对象
+示例：匹配所有 `components` 目录下的 `.tsx` 文件：
 
-### 阶段 3：树视图实现
-- [x] 实现 `TreeDataProvider`：`getChildren`、`getTreeItem`、`getParent`
-- [x] 分组节点和文件节点使用不同 `TreeItem`，设置 `contextValue` 以便右键菜单区分
-- [x] 刷新方法：调用 `onDidChangeTreeData` 事件
+```
+.*/components/.*\.tsx$
+```
 
-### 阶段 4：命令实现
-- [x] 所有分组操作命令（新建、删除、重命名、展开/折叠）
-- [x] 标签页右键命令：`addToGroup`、`removeFromGroup`
-- [x] 树视图内右键命令：打开文件、从分组移除文件、扫描文件（正则分组）、设置配置等
+### 3. 全局配置（多分组复用）
 
-### 阶段 5：正则扫描功能
-- [x] 实现 `scanGroupWithRegex(group)`：获取有效正则，调用 `findFiles`，过滤，更新 `group.files`
+若多个分组要用同一套规则，可在 `.vscode/tab-groups.json` 的 `configs` 里定义全局配置，再在分组上 **引用全局配置**。
 
-### 阶段 6：错误处理与优化
-- [x] 工作区未打开或多根时禁用功能并提示
-- [x] JSON 解析失败时的回退与提示
-- [x] 文件路径不存在时在树视图中灰显，且可右键移除
-- [x] 添加状态栏消息提示成功/失败
-- [x] 外部修改配置文件后自动重新加载
+右键分组 → **管理全局配置** 可打开配置文件进行编辑。全局配置需手动在 JSON 中新增；分组侧通过「引用全局配置」选择已有项。
 
-### 阶段 7：测试与打包
-- [ ] 编写单元测试（Mocha）
-- [ ] 本地 `vsce package` 生成 `.vsix` 并安装测试
-- [ ] 发布到 Marketplace
-
----
-
-## 8. 边界情况与注意事项
-
-1. **多根工作区**：MVP 仅支持**单根工作区**；无工作区或多根时禁用所有菜单命令，树视图显示提示文案。
-2. **文件被移动/重命名**：分组中存储的相对路径会失效，树视图中灰显并标注「（不存在）」，可右键移除（v2 可考虑监听 `onDidRenameFiles` 自动更新）。
-3. **正则表达式转义**：用户输入的正则需经过 `new RegExp()` 验证，无效时提示错误。
-4. **性能**：扫描大量文件时使用 `withProgress` 并支持取消。
-5. **配置文件热重载**：外部修改或编辑器内保存 `.vscode/tab-groups.json` 后自动重新加载（v1 已实现）。
-
----
-
-## 9. 后续迭代计划（v2 / v3）
-
-- **快捷键绑定**：快速将当前文件加入最近使用的分组
-- **拖拽支持**：在树视图中拖拽文件到另一个分组
-- **自动分组**：根据打开的文件自动建议加入分组（基于规则）
-- **分组颜色/徽章**：在树视图中显示不同颜色图标
-- **跨工作区共享配置**：支持用户级全局分组（不依赖工作区）
-
----
-
-## 10. 附录：示例配置文件
+配置文件示例：
 
 ```json
 {
@@ -247,17 +116,8 @@ interface TabGroupsData {
     {
       "id": "group-2",
       "name": "后端逻辑",
-      "files": ["server.js", "db.js"],
+      "files": [],
       "configId": "backend-regex"
-    },
-    {
-      "id": "group-3",
-      "name": "前端组件",
-      "files": ["components/Button.tsx"],
-      "config": {
-        "type": "regex",
-        "regex": ".*/components/.*\\.tsx$"
-      }
     }
   ],
   "configs": [
@@ -271,8 +131,40 @@ interface TabGroupsData {
 }
 ```
 
+修改并保存该文件后，扩展会自动重新加载，无需重启。
+
 ---
 
-## 11. 开发记录
+## 使用限制与提示
 
-各版本的开发决策、歧义澄清与实现记录见 **[developer.md](./developer.md)**。
+| 情况 | 说明 |
+|------|------|
+| 单根工作区 | 目前仅支持打开**一个文件夹**的工作区；多根工作区或未打开文件夹时，功能不可用 |
+| 文件被移动/重命名 | 分组里存的是相对路径，文件移动后会显示为不存在，需手动从分组移除或重新加入 |
+| 正则扫描 | 会**覆盖**该分组当前的文件列表；扫描大量文件时会有进度提示，可取消 |
+| 删除分组 | 若该分组引用的全局配置已无其他分组使用，会询问是否一并删除该配置 |
+
+---
+
+## 常见问题
+
+**Q：分组数据存在哪里？**  
+A：当前工作区下的 `.vscode/tab-groups.json`。
+
+**Q：换电脑或同事能共用分组吗？**  
+A：可以。把该 JSON 文件纳入版本控制即可。
+
+**Q：正则写错了怎么办？**  
+A：保存前扩展会校验；无效正则会提示错误，请检查转义（如 `.` 写成 `\.`）。
+
+**Q：和 VS Code 自带的 Tab Groups 冲突吗？**  
+A：不冲突。本扩展管理的是「文件逻辑分组」，与编辑器窗口布局里的 Tab Groups 是不同概念。
+
+---
+
+## 开发者文档
+
+如需了解数据结构、API 与实现细节，请参阅：
+
+- [developer-readme.md](./developer-readme.md) — 产品需求与开发说明
+- [developer-record.md](./developer-record.md) — 版本开发记录与决策
