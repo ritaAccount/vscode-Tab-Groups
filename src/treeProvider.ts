@@ -1,9 +1,17 @@
 import * as vscode from 'vscode';
 import { Group, GroupFileEntry } from './types';
 import { TabGroupsManager } from './tabGroupsManager';
-import { fileExists } from './workspaceUtils';
+import { fileExists, isValidWorkspace } from './workspaceUtils';
 
 export type TreeElement = GroupTreeItem | FileTreeItem;
+
+const FILE_DRAG_MIME = 'application/vnd.tabgroups.file';
+
+interface FileDragPayload {
+  groupId: string;
+  path: string;
+  alias: string;
+}
 
 export class GroupTreeItem extends vscode.TreeItem {
   constructor(
@@ -52,9 +60,14 @@ export class FileTreeItem extends vscode.TreeItem {
   readonly relativePath: string;
 }
 
-export class TabGroupsTreeProvider implements vscode.TreeDataProvider<TreeElement> {
+export class TabGroupsTreeProvider
+  implements vscode.TreeDataProvider<TreeElement>, vscode.TreeDragAndDropController<TreeElement>
+{
   private readonly onDidChangeTreeDataEmitter = new vscode.EventEmitter<TreeElement | undefined>();
   readonly onDidChangeTreeData = this.onDidChangeTreeDataEmitter.event;
+
+  readonly dropMimeTypes = [FILE_DRAG_MIME];
+  readonly dragMimeTypes = [FILE_DRAG_MIME];
 
   private expandedGroupIds = new Set<string>();
 
@@ -74,6 +87,68 @@ export class TabGroupsTreeProvider implements vscode.TreeDataProvider<TreeElemen
 
   getExpandedGroupIds(): Set<string> {
     return this.expandedGroupIds;
+  }
+
+  handleDrag(source: readonly TreeElement[], dataTransfer: vscode.DataTransfer): void {
+    if (!isValidWorkspace()) {
+      return;
+    }
+
+    const payloads: FileDragPayload[] = source
+      .filter((item): item is FileTreeItem => item instanceof FileTreeItem)
+      .map((item) => ({
+        groupId: item.groupId,
+        path: item.relativePath,
+        alias: item.fileEntry.alias,
+      }));
+
+    if (payloads.length === 0) {
+      return;
+    }
+
+    dataTransfer.set(FILE_DRAG_MIME, new vscode.DataTransferItem(JSON.stringify(payloads)));
+  }
+
+  async handleDrop(
+    target: TreeElement | undefined,
+    dataTransfer: vscode.DataTransfer,
+    _token: vscode.CancellationToken,
+  ): Promise<void> {
+    if (!isValidWorkspace() || !(target instanceof GroupTreeItem)) {
+      return;
+    }
+
+    const transferItem = dataTransfer.get(FILE_DRAG_MIME);
+    if (!transferItem) {
+      return;
+    }
+
+    let payloads: FileDragPayload[];
+    try {
+      payloads = JSON.parse(await transferItem.asString()) as FileDragPayload[];
+    } catch {
+      return;
+    }
+
+    if (!Array.isArray(payloads) || payloads.length === 0) {
+      return;
+    }
+
+    const moved = await this.manager.moveFilesToGroup(
+      payloads.map((payload) => ({
+        sourceGroupId: payload.groupId,
+        filePath: payload.path,
+      })),
+      target.group.id,
+    );
+
+    if (moved === 0) {
+      return;
+    }
+
+    this.refresh();
+    const targetLabel = this.manager.getGroupPathLabel(target.group.id);
+    vscode.window.setStatusBarMessage(`已将 ${moved} 个文件移动到「${targetLabel}」`, 3000);
   }
 
   getParent(element: TreeElement): TreeElement | undefined {

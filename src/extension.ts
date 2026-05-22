@@ -19,6 +19,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   const treeView = vscode.window.createTreeView('tabGroupsView', {
     treeDataProvider: treeProvider,
+    dragAndDropController: treeProvider,
   });
   treeViewRef = treeView;
 

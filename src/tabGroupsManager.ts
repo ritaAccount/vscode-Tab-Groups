@@ -246,6 +246,44 @@ export class TabGroupsManager {
     await this.save();
   }
 
+  async moveFilesToGroup(
+    moves: Array<{ sourceGroupId: string; filePath: string }>,
+    targetGroupId: string,
+  ): Promise<number> {
+    const target = this.getGroup(targetGroupId);
+    if (!target || moves.length === 0) {
+      return 0;
+    }
+
+    let moved = 0;
+    for (const { sourceGroupId, filePath } of moves) {
+      if (sourceGroupId === targetGroupId) {
+        continue;
+      }
+
+      const source = this.getGroup(sourceGroupId);
+      if (!source) {
+        continue;
+      }
+
+      const entry = source.files.find((file) => file.path === filePath);
+      if (!entry) {
+        continue;
+      }
+
+      source.files = source.files.filter((file) => file.path !== filePath);
+      if (!groupContainsPath(target, filePath)) {
+        target.files.push({ path: entry.path, alias: entry.alias });
+      }
+      moved++;
+    }
+
+    if (moved > 0) {
+      await this.save();
+    }
+    return moved;
+  }
+
   async removeFileFromAllGroups(filePath: string): Promise<number> {
     let count = 0;
     for (const group of this.data.groups) {
