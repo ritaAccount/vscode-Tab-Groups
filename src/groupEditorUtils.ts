@@ -1,27 +1,25 @@
 import * as vscode from 'vscode';
-import { fileExists, toAbsoluteUri, toRelativePath } from './workspaceUtils';
+import { GroupFileEntry } from './types';
+import { fileExistenceCache } from './fileExistenceCache';
+import { openFileEntry } from './fileLocationUtils';
+import { toRelativePath } from './workspaceUtils';
 
-export async function openGroupFiles(files: string[]): Promise<{ opened: number; skipped: number }> {
+export async function openGroupFiles(entries: GroupFileEntry[]): Promise<{ opened: number; skipped: number }> {
   let opened = 0;
   let skipped = 0;
 
-  for (let i = 0; i < files.length; i++) {
-    const relativePath = files[i];
-    const uri = toAbsoluteUri(relativePath);
-    if (!uri || !(await fileExists(relativePath))) {
+  for (let i = 0; i < entries.length; i++) {
+    const entry = entries[i];
+    if (!(await fileExistenceCache.exists(entry.path))) {
       skipped++;
       continue;
     }
 
-    try {
-      const doc = await vscode.workspace.openTextDocument(uri);
-      const isLast = i === files.length - 1;
-      await vscode.window.showTextDocument(doc, {
-        preview: false,
-        preserveFocus: !isLast,
-      });
+    const isLast = i === entries.length - 1;
+    const success = await openFileEntry(entry, { preserveFocus: !isLast });
+    if (success) {
       opened++;
-    } catch {
+    } else {
       skipped++;
     }
   }

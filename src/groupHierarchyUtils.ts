@@ -1,4 +1,5 @@
-import { Group } from './types';
+import { randomUUID } from 'node:crypto';
+import { Group, GroupFileEntry } from './types';
 import { getGroupFilePaths } from './fileEntryUtils';
 
 export function buildGroupsMap(groups: Group[]): Map<string, Group> {
@@ -34,6 +35,30 @@ export function getGroupPathLabel(groups: Group[], groupId: string): string {
   return parts.join(' / ');
 }
 
+export function isDescendantOf(groups: Group[], ancestorId: string, candidateId: string): boolean {
+  if (ancestorId === candidateId) {
+    return true;
+  }
+  return collectDescendantIds(groups, ancestorId).includes(candidateId);
+}
+
+export function updateGroupLevels(groups: Group[], groupId: string, newLevel: number): void {
+  const map = buildGroupsMap(groups);
+
+  const walk = (id: string, level: number): void => {
+    const group = map.get(id);
+    if (!group) {
+      return;
+    }
+    group.level = level;
+    for (const childId of group.children) {
+      walk(childId, level + 1);
+    }
+  };
+
+  walk(groupId, newLevel);
+}
+
 export function collectDescendantIds(groups: Group[], groupId: string): string[] {
   const map = buildGroupsMap(groups);
   const ids: string[] = [];
@@ -54,22 +79,36 @@ export function collectDescendantIds(groups: Group[], groupId: string): string[]
 }
 
 export function collectAllFilePaths(groups: Group[], groupId: string): string[] {
+  return collectAllFileEntries(groups, groupId).map((entry) => entry.path);
+}
+
+export function collectAllFileEntries(groups: Group[], groupId: string): GroupFileEntry[] {
   const map = buildGroupsMap(groups);
-  const paths: string[] = [];
+  const entries: GroupFileEntry[] = [];
 
   const walk = (id: string): void => {
     const group = map.get(id);
     if (!group) {
       return;
     }
-    paths.push(...getGroupFilePaths(group));
+    entries.push(...group.files);
     for (const childId of group.children) {
       walk(childId);
     }
   };
 
   walk(groupId);
-  return [...new Set(paths)];
+
+  const seen = new Set<string>();
+  const uniqueEntries: GroupFileEntry[] = [];
+  for (const entry of entries) {
+    if (seen.has(entry.path)) {
+      continue;
+    }
+    seen.add(entry.path);
+    uniqueEntries.push(entry);
+  }
+  return uniqueEntries;
 }
 
 export function removeGroupReferences(groups: Group[], groupIds: Set<string>): void {
@@ -80,7 +119,7 @@ export function removeGroupReferences(groups: Group[], groupIds: Set<string>): v
 
 export function normalizeGroupHierarchy(raw: Partial<Group>): Group {
   return {
-    id: raw.id ?? crypto.randomUUID(),
+    id: raw.id ?? randomUUID(),
     name: raw.name ?? '未命名分组',
     level: typeof raw.level === 'number' && raw.level >= 0 ? raw.level : 0,
     children: Array.isArray(raw.children)
@@ -100,7 +139,7 @@ export function needsHierarchyMigration(groups: Partial<Group>[]): boolean {
 
 export function createEmptyGroup(name: string, level: number): Group {
   return {
-    id: crypto.randomUUID(),
+    id: randomUUID(),
     name,
     level,
     children: [],

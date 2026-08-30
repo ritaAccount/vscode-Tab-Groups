@@ -1,16 +1,18 @@
 import * as vscode from 'vscode';
 import { registerCommands } from './commands';
+import { fileExistenceCache } from './fileExistenceCache';
 import { ensureWorkspaceShortcutSettings, syncKeybindingsFromSettings } from './shortcutUtils';
 import { initializeShortcutSettings, registerShortcutsCommands } from './shortcutsWebview';
 import { TabGroupsManager } from './tabGroupsManager';
 import { GroupTreeItem, TabGroupsTreeProvider } from './treeProvider';
 import { CONFIG_RELATIVE_PATH } from './types';
-import { getWorkspaceInvalidMessage, isValidWorkspace } from './workspaceUtils';
+import { getWorkspaceInvalidMessage, isValidWorkspace, toRelativePath } from './workspaceUtils';
 
 let manager: TabGroupsManager | undefined;
 let treeProvider: TabGroupsTreeProvider | undefined;
 let treeViewRef: vscode.TreeView<GroupTreeItem | import('./treeProvider').FileTreeItem> | undefined;
 let configWatcher: vscode.FileSystemWatcher | undefined;
+let workspaceFileWatcher: vscode.FileSystemWatcher | undefined;
 let isReloadingFromDisk = false;
 
 export async function activate(context: vscode.ExtensionContext): Promise<void> {
@@ -48,6 +50,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
       }
     }),
     vscode.workspace.onDidChangeWorkspaceFolders(async () => {
+      fileExistenceCache.clear();
       updateTreeViewMessage();
       await reloadAll(context);
       await initializeShortcutSettings();
@@ -65,13 +68,17 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   try {
     await syncKeybindingsFromSettings();
   } catch (error) {
-    console.error('Tab Groups: 同步 keybindings.json 失败', error);
+    const detail = error instanceof Error ? error.message : String(error);
+    void vscode.window.showErrorMessage(`Tab Groups: 同步 keybindings.json 失败：${detail}`);
   }
 }
 
 export function deactivate(): void {
   configWatcher?.dispose();
   configWatcher = undefined;
+  workspaceFileWatcher?.dispose();
+  workspaceFileWatcher = undefined;
+  fileExistenceCache.clear();
   manager = undefined;
   treeProvider = undefined;
   treeViewRef = undefined;
@@ -79,9 +86,11 @@ export function deactivate(): void {
 
 async function reloadAll(context: vscode.ExtensionContext): Promise<void> {
   setupConfigWatcher(context);
+  setupWorkspaceFileWatcher(context);
   updateTreeViewMessage();
 
   if (!isValidWorkspace()) {
+    fileExistenceCache.clear();
     treeProvider?.refresh();
     return;
   }
@@ -137,6 +146,62 @@ function setupConfigWatcher(context: vscode.ExtensionContext): void {
   });
 
   context.subscriptions.push(configWatcher);
+}
+
+function setupWorkspaceFileWatcher(context: vscode.ExtensionContext): void {
+  workspaceFileWatcher?.dispose();
+  workspaceFileWatcher = undefined;
+
+  if (!isValidWorkspace()) {
+    return;
+  }
+
+  const pattern = new vscode.RelativePattern(vscode.workspace.workspaceFolders![0], '**/*');
+  workspaceFileWatcher = vscode.workspace.createFileSystemWatcher(pattern);
+
+  const handlePathsChanged = (paths: string[]): void => {
+    if (paths.length === 0 || !manager || !treeProvider) {
+      return;
+    }
+
+    fileExistenceCache.invalidateMany(paths);
+    const affectsGroups = paths.some((path) => manager!.containsFilePath(path));
+    if (affectsGroups) {
+      treeProvider.refresh();
+    }
+  };
+
+  workspaceFileWatcher.onDidCreate((uri) => {
+    const path = toRelativePath(uri);
+    if (path) {
+      handlePathsChanged([path]);
+    }
+  });
+
+  workspaceFileWatcher.onDidDelete((uri) => {
+    const path = toRelativePath(uri);
+    if (path) {
+      handlePathsChanged([path]);
+    }
+  });
+
+  context.subscriptions.push(
+    workspaceFileWatcher,
+    vscode.workspace.onDidRenameFiles((event) => {
+      const paths: string[] = [];
+      for (const { oldUri, newUri } of event.files) {
+        const oldPath = toRelativePath(oldUri);
+        const newPath = toRelativePath(newUri);
+        if (oldPath) {
+          paths.push(oldPath);
+        }
+        if (newPath) {
+          paths.push(newPath);
+        }
+      }
+      handlePathsChanged(paths);
+    }),
+  );
 }
 
 function isConfigFile(uri: vscode.Uri): boolean {

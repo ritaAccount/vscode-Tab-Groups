@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import * as vscode from 'vscode';
 import {
   buildScannedFiles,
@@ -9,15 +10,18 @@ import {
 } from './fileEntryUtils';
 import {
   collectAllFilePaths,
+  collectAllFileEntries,
   collectDescendantIds,
   createEmptyGroup,
   findParentGroupId,
   getChildGroups,
   getGroupPathLabel,
   getRootGroups,
+  isDescendantOf,
   needsHierarchyMigration,
   normalizeGroupHierarchy,
   removeGroupReferences,
+  updateGroupLevels,
 } from './groupHierarchyUtils';
 import {
   CONFIG_RELATIVE_PATH,
@@ -116,6 +120,12 @@ export class TabGroupsManager {
 
   getGroups(): Group[] {
     return this.data.groups;
+  }
+
+  containsFilePath(relativePath: string): boolean {
+    return this.data.groups.some((group) =>
+      group.files.some((file) => file.path === relativePath),
+    );
   }
 
   getRootGroups(): Group[] {
@@ -273,7 +283,7 @@ export class TabGroupsManager {
 
       source.files = source.files.filter((file) => file.path !== filePath);
       if (!groupContainsPath(target, filePath)) {
-        target.files.push({ path: entry.path, alias: entry.alias });
+        target.files.push({ ...entry });
       }
       moved++;
     }
@@ -282,6 +292,42 @@ export class TabGroupsManager {
       await this.save();
     }
     return moved;
+  }
+
+  async moveGroupToParent(groupId: string, newParentId: string): Promise<boolean> {
+    if (groupId === newParentId) {
+      return false;
+    }
+
+    const group = this.getGroup(groupId);
+    const newParent = this.getGroup(newParentId);
+    if (!group || !newParent) {
+      return false;
+    }
+
+    if (isDescendantOf(this.data.groups, groupId, newParentId)) {
+      return false;
+    }
+
+    const oldParentId = findParentGroupId(this.data.groups, groupId);
+    if (oldParentId === newParentId) {
+      return false;
+    }
+
+    if (oldParentId) {
+      const oldParent = this.getGroup(oldParentId);
+      if (oldParent) {
+        oldParent.children = oldParent.children.filter((id) => id !== groupId);
+      }
+    }
+
+    if (!newParent.children.includes(groupId)) {
+      newParent.children.push(groupId);
+    }
+
+    updateGroupLevels(this.data.groups, groupId, newParent.level + 1);
+    await this.save();
+    return true;
   }
 
   async removeFileFromAllGroups(filePath: string): Promise<number> {
@@ -341,6 +387,45 @@ export class TabGroupsManager {
     return collectAllFilePaths(this.data.groups, groupId);
   }
 
+  getGroupFileEntriesRecursive(groupId: string): GroupFileEntry[] {
+    return collectAllFileEntries(this.data.groups, groupId);
+  }
+
+  async updateFileEntry(
+    groupId: string,
+    filePath: string,
+    patch: Partial<Pick<GroupFileEntry, 'line' | 'column'>>,
+  ): Promise<boolean> {
+    const group = this.getGroup(groupId);
+    if (!group) {
+      return false;
+    }
+
+    const entry = group.files.find((file) => file.path === filePath);
+    if (!entry) {
+      return false;
+    }
+
+    if ('line' in patch) {
+      if (patch.line === undefined) {
+        delete entry.line;
+      } else {
+        entry.line = patch.line;
+      }
+    }
+
+    if ('column' in patch) {
+      if (patch.column === undefined) {
+        delete entry.column;
+      } else {
+        entry.column = patch.column;
+      }
+    }
+
+    await this.save();
+    return true;
+  }
+
   async setGroupConfig(groupId: string, config: InlineConfig): Promise<void> {
     const group = this.getGroup(groupId);
     if (!group) {
@@ -374,7 +459,7 @@ export class TabGroupsManager {
   async createGlobalConfig(config: Omit<GlobalConfig, 'id'> & { id?: string }): Promise<GlobalConfig> {
     const globalConfig: GlobalConfig = {
       ...config,
-      id: config.id ?? crypto.randomUUID(),
+      id: config.id ?? randomUUID(),
     } as GlobalConfig;
     this.data.configs.push(globalConfig);
     await this.save();

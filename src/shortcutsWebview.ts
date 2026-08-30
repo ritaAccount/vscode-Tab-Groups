@@ -123,6 +123,10 @@ function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): stri
     <button id="removeFromGroup" class="shortcut-button" type="button" data-shortcut="removeFromGroup">ctrl+shift+o</button>
   </div>
   <div class="row">
+    <span class="label">添加游标</span>
+    <button id="addCursor" class="shortcut-button" type="button" data-shortcut="addCursor">ctrl+shift+l</button>
+  </div>
+  <div class="row">
     <span class="label">新建分组</span>
     <button id="createGroup" class="shortcut-button" type="button" data-shortcut="createGroup">ctrl+shift+u</button>
   </div>

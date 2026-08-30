@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { closeGroupFiles, openGroupFiles } from './groupEditorUtils';
+import { getMatchingActiveEditor, openFileEntry } from './fileLocationUtils';
 import { TabGroupsManager } from './tabGroupsManager';
 import { FileTreeItem, GroupTreeItem, TabGroupsTreeProvider } from './treeProvider';
 import {
@@ -168,13 +169,13 @@ export function registerCommands(
     }
 
     const { name } = groupItem.group;
-    const filePaths = manager.getGroupFilePathsRecursive(groupItem.group.id);
-    if (filePaths.length === 0) {
+    const fileEntries = manager.getGroupFileEntriesRecursive(groupItem.group.id);
+    if (fileEntries.length === 0) {
       await vscode.window.showInformationMessage(`分组「${name}」中没有文件。`);
       return;
     }
 
-    const { opened, skipped } = await openGroupFiles(filePaths);
+    const { opened, skipped } = await openGroupFiles(fileEntries);
     if (opened === 0) {
       await vscode.window.showWarningMessage(`分组「${name}」中没有可打开的文件。`);
       return;
@@ -380,17 +381,40 @@ export function registerCommands(
       return;
     }
 
-    const uri = toAbsoluteUri(item.relativePath);
-    if (!uri) {
+    const success = await openFileEntry(item.fileEntry);
+    if (!success) {
+      await vscode.window.showErrorMessage(`无法打开文件：${item.relativePath}`);
+    }
+  });
+
+  register('tabGroups.addCursor', async (item?: FileTreeItem) => {
+    const folder = await ensureValidWorkspace();
+    if (!folder) {
       return;
     }
 
-    try {
-      const doc = await vscode.workspace.openTextDocument(uri);
-      await vscode.window.showTextDocument(doc);
-    } catch {
-      await vscode.window.showErrorMessage(`无法打开文件：${item.relativePath}`);
+    const target = await resolveAddCursorTarget(item, manager, treeView);
+    if (!target) {
+      return;
     }
+
+    const editor = getMatchingActiveEditor(target.relativePath);
+    if (!editor) {
+      await vscode.window.showWarningMessage(`请打开「${target.relativePath}」并将光标置于目标行。`);
+      return;
+    }
+
+    const { line, character } = editor.selection.active;
+    const updated = await manager.updateFileEntry(target.groupId, target.relativePath, {
+      line,
+      column: character,
+    });
+    if (!updated) {
+      return;
+    }
+
+    treeProvider.refresh();
+    vscode.window.setStatusBarMessage(`已为「${target.alias}」添加游标 L${line + 1}`, 3000);
   });
 
   register('tabGroups.removeFile', async (item?: FileTreeItem) => {
@@ -556,6 +580,86 @@ function resolveGroupItem(
   }
   const selection = treeView.selection[0];
   if (selection instanceof GroupTreeItem) {
+    return selection;
+  }
+  return undefined;
+}
+
+interface AddCursorTarget {
+  groupId: string;
+  relativePath: string;
+  alias: string;
+}
+
+async function resolveAddCursorTarget(
+  item: FileTreeItem | undefined,
+  manager: TabGroupsManager,
+  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem>,
+): Promise<AddCursorTarget | undefined> {
+  const fileItem = resolveFileItem(item, treeView);
+  if (fileItem) {
+    return {
+      groupId: fileItem.groupId,
+      relativePath: fileItem.relativePath,
+      alias: fileItem.fileEntry.alias,
+    };
+  }
+
+  const targetUri = vscode.window.activeTextEditor?.document.uri;
+  if (!targetUri) {
+    await vscode.window.showWarningMessage('请先在编辑器中打开文件，或在侧边栏选中文件节点。');
+    return undefined;
+  }
+
+  const relativePath = toRelativePath(targetUri);
+  if (!relativePath) {
+    await vscode.window.showWarningMessage('只能为工作区内的文件添加游标。');
+    return undefined;
+  }
+
+  const groups = manager.getGroupsContainingFile(relativePath);
+  if (groups.length === 0) {
+    await vscode.window.showWarningMessage('当前文件不在任何分组中，请先加入分组。');
+    return undefined;
+  }
+
+  if (groups.length === 1) {
+    const entry = manager.getFileEntry(groups[0].id, relativePath);
+    return {
+      groupId: groups[0].id,
+      relativePath,
+      alias: entry?.alias ?? relativePath.split('/').pop() ?? relativePath,
+    };
+  }
+
+  const picked = await vscode.window.showQuickPick(
+    groups.map((group) => ({
+      label: manager.getGroupPathLabel(group.id),
+      groupId: group.id,
+    })),
+    { placeHolder: '选择要添加游标的分组' },
+  );
+  if (!picked) {
+    return undefined;
+  }
+
+  const entry = manager.getFileEntry(picked.groupId, relativePath);
+  return {
+    groupId: picked.groupId,
+    relativePath,
+    alias: entry?.alias ?? relativePath.split('/').pop() ?? relativePath,
+  };
+}
+
+function resolveFileItem(
+  item: FileTreeItem | undefined,
+  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem>,
+): FileTreeItem | undefined {
+  if (item instanceof FileTreeItem) {
+    return item;
+  }
+  const selection = treeView.selection[0];
+  if (selection instanceof FileTreeItem) {
     return selection;
   }
   return undefined;

@@ -31,6 +31,10 @@ export interface Group {
 export interface GroupFileEntry {
   path: string;
   alias: string;
+  /** 0-based line number for cursor restore */
+  line?: number;
+  /** 0-based column number for cursor restore */
+  column?: number;
 }
 
 export interface TabGroupsData {
@@ -46,6 +50,7 @@ export interface ShortcutSettings {
   removeFromGroup: string;
   createGroup: string;
   deleteGroup: string;
+  addCursor: string;
 }
 
 export const DEFAULT_SHORTCUTS: ShortcutSettings = {
@@ -53,6 +58,7 @@ export const DEFAULT_SHORTCUTS: ShortcutSettings = {
   removeFromGroup: 'ctrl+shift+o',
   createGroup: 'ctrl+shift+u',
   deleteGroup: 'ctrl+shift+p',
+  addCursor: 'ctrl+shift+l',
 };
 
 export const SHORTCUT_COMMANDS = {
@@ -60,10 +66,12 @@ export const SHORTCUT_COMMANDS = {
   removeFromGroup: 'tabGroups.removeFromGroup',
   createGroup: 'tabGroups.createGroup',
   deleteGroup: 'tabGroups.deleteGroup',
+  addCursor: 'tabGroups.addCursor',
 } as const;
 
 export const SHORTCUT_WHEN = {
   file: 'workspaceFolderCount == 1 && resourceScheme == file',
+  fileEditor: 'workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus',
   workspace: 'workspaceFolderCount == 1',
 } as const;
 

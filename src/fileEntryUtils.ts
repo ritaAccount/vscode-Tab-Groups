@@ -1,9 +1,25 @@
 import { Group, GroupFileEntry } from './types';
 
-export const CONFIG_VERSION = '1.1.0';
+export const CONFIG_VERSION = '1.2.0';
 
 export function defaultAliasFromPath(relativePath: string): string {
   return relativePath.split('/').pop() ?? relativePath;
+}
+
+function readOptionalNumber(value: unknown): number | undefined {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
+}
+
+export function formatFileLocationSuffix(entry: GroupFileEntry): string {
+  if (entry.line !== undefined) {
+    return ` · L${entry.line + 1}`;
+  }
+  return '';
+}
+
+export function formatFileEntryDescription(entry: GroupFileEntry, exists: boolean): string {
+  const pathLabel = exists ? entry.path : `${entry.path}（不存在）`;
+  return `${pathLabel}${formatFileLocationSuffix(entry)}`;
 }
 
 export function normalizeFileEntry(raw: unknown): GroupFileEntry | undefined {
@@ -16,12 +32,28 @@ export function normalizeFileEntry(raw: unknown): GroupFileEntry | undefined {
   }
 
   if (typeof raw === 'object' && raw !== null && typeof (raw as GroupFileEntry).path === 'string') {
-    const path = (raw as GroupFileEntry).path.trim();
+    const rawEntry = raw as GroupFileEntry;
+    const path = rawEntry.path.trim();
     if (!path) {
       return undefined;
     }
-    const alias = (raw as GroupFileEntry).alias?.trim();
-    return { path, alias: alias || defaultAliasFromPath(path) };
+    const alias = rawEntry.alias?.trim();
+    const entry: GroupFileEntry = {
+      path,
+      alias: alias || defaultAliasFromPath(path),
+    };
+
+    const line = readOptionalNumber(rawEntry.line);
+    const column = readOptionalNumber(rawEntry.column);
+
+    if (line !== undefined) {
+      entry.line = line;
+    }
+    if (column !== undefined) {
+      entry.column = column;
+    }
+
+    return entry;
   }
 
   return undefined;
@@ -69,12 +101,16 @@ export function groupContainsPath(group: Group, filePath: string): boolean {
 }
 
 export function buildScannedFiles(existingFiles: GroupFileEntry[], matchedPaths: string[]): GroupFileEntry[] {
-  const aliasByPath = new Map(existingFiles.map((file) => [file.path, file.alias]));
+  const existingByPath = new Map(existingFiles.map((file) => [file.path, file]));
 
-  return matchedPaths
-    .sort()
-    .map((path) => ({
+  return matchedPaths.sort().map((path) => {
+    const existing = existingByPath.get(path);
+    if (existing) {
+      return { ...existing };
+    }
+    return {
       path,
-      alias: aliasByPath.get(path) ?? defaultAliasFromPath(path),
-    }));
+      alias: defaultAliasFromPath(path),
+    };
+  });
 }

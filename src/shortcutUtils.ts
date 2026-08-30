@@ -27,6 +27,7 @@ const SHORTCUT_ENTRIES: Array<{
 }> = [
   { settingKey: 'addToGroup', command: SHORTCUT_COMMANDS.addToGroup, when: SHORTCUT_WHEN.file },
   { settingKey: 'removeFromGroup', command: SHORTCUT_COMMANDS.removeFromGroup, when: SHORTCUT_WHEN.file },
+  { settingKey: 'addCursor', command: SHORTCUT_COMMANDS.addCursor, when: SHORTCUT_WHEN.fileEditor },
   { settingKey: 'createGroup', command: SHORTCUT_COMMANDS.createGroup, when: SHORTCUT_WHEN.workspace },
   { settingKey: 'deleteGroup', command: SHORTCUT_COMMANDS.deleteGroup, when: SHORTCUT_WHEN.workspace },
 ];
@@ -47,6 +48,7 @@ function mergeShortcutSettings(partial?: Partial<ShortcutSettings>): ShortcutSet
     removeFromGroup: partial?.removeFromGroup?.trim() || DEFAULT_SHORTCUTS.removeFromGroup,
     createGroup: partial?.createGroup?.trim() || DEFAULT_SHORTCUTS.createGroup,
     deleteGroup: partial?.deleteGroup?.trim() || DEFAULT_SHORTCUTS.deleteGroup,
+    addCursor: partial?.addCursor?.trim() || DEFAULT_SHORTCUTS.addCursor,
   };
 }
 

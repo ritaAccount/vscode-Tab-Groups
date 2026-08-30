@@ -189,7 +189,7 @@ media/shortcuts.js        # 按键捕获逻辑
 | 子组与文件 | 同一分组可同时有 `children` 与 `files` |
 | 正则配置 | 跟随当前组，与子组无关 |
 | 新建根分组 | 顶栏 / 快捷键 `createGroup` → `level: 0` |
-| 新建子分组 | 分组右键 →「新建子分组」→ `level = parent.level + 1` |
+| 新建子分组 | 分组 inline「＋」/ 右键「新建子分组」→ `level = parent.level + 1` |
 | 删除 | 级联删除所有子孙组；快捷键删除仅选根级分组 |
 | 批量打开/关闭 | 递归包含所有子分组内的文件 |
 
@@ -210,7 +210,80 @@ media/shortcuts.js        # 按键捕获逻辑
 
 **实现**：`TreeDragAndDropController` + `TabGroupsManager.moveFilesToGroup()`
 
-v1.1.1
-1、配置文件导入导出（支持部分文件夹导入导出）
-2、bugfix：文件夹拖动到另一个文件夹中
-3、bugfix：组上新键组应该是创建子组操作，也就是加在子组中
+### v1.1.1 实现记录 — 拖拽移动分组（2026-08）
+
+| 项 | 决策 |
+|----|------|
+| 操作 | 侧边栏中将分组节点拖拽到目标分组 |
+| 行为 | 整棵子树 reparent（含子孙组与组内文件）；从旧父 `children` 移除，加入新父 `children`，递归更新 `level` |
+| 防环 | 禁止拖入自身或自身子孙；已是目标直接子组则无操作 |
+| 多选 | 支持一次拖拽多个分组节点 |
+| 放置目标 | 仅分组节点 |
+
+**实现**：`GROUP_DRAG_MIME` + `TabGroupsManager.moveGroupToParent()` + `groupHierarchyUtils.updateGroupLevels()`
+
+### v1.1.1 Bugfix 记录（2026-08）
+
+| Bug | 根因 | 修复 |
+|-----|------|------|
+| 文件夹无法拖到另一文件夹 | v1.1.1 仅实现文件拖放；`handleDrag` 过滤掉 `GroupTreeItem`，拖拽数据未写入 `DataTransfer`；`TabGroupsManager` 缺少 reparent API | 新增 `GROUP_DRAG_MIME`、`moveGroupToParent()`、`updateGroupLevels()` / `isDescendantOf()`；整棵子树随被拖分组迁移 |
+| 分组 inline「＋」创建根分组 | `package.json` inline 菜单误绑 `tabGroups.createGroup` 且无 `viewItem` 限制；`createGroup` 命令无树节点上下文，始终 `level: 0` | inline 改绑 `tabGroups.createSubGroup`，限 `group` / `groupRegex`；顶栏与快捷键仍用 `createGroup` |
+
+**涉及文件**：`src/treeProvider.ts`、`src/tabGroupsManager.ts`、`src/groupHierarchyUtils.ts`、`package.json`
+
+### v1.1.1 实现记录 — 文件存在性缓存（2026-08）
+
+| 项 | 决策 |
+|----|------|
+| 背景 | 树展开时对组内每个文件串行 `stat`；全量 `refresh()` 后已展开分组会重复检查，分组/文件量大时变慢 |
+| 方案 | 内存缓存（方案 B）：同一路径在失效前只 `stat` 一次 |
+| 并行 | 单组内多文件用 `Promise.all` 并行查询（与缓存叠加） |
+| 接入点 | `treeProvider.getChildren`（树灰显）、`groupEditorUtils.openGroupFiles`（批量打开） |
+| 失效 · 全量 | 工作区切换、`deactivate`、无效工作区时 `clear()` |
+| 失效 · 按路径 | 监听工作区 `create` / `delete` / `rename`，对变更路径 `invalidate` |
+| 刷新策略 | `treeProvider.refresh()` / 配置热重载**不清缓存**（磁盘未变则复用）；仅当变更路径出现在分组配置中时才 `refresh()` 更新灰显 |
+| 无关文件变更 | 工作区其他文件增删改只失效缓存项，不触发整树刷新 |
+
+**新增源码**：`src/fileExistenceCache.ts`（`FileExistenceCache` + 单例 `fileExistenceCache`）
+
+**改动文件**：`src/extension.ts`（`setupWorkspaceFileWatcher`）、`src/tabGroupsManager.ts`（`containsFilePath()`）、`src/treeProvider.ts`、`src/groupEditorUtils.ts`
+
+**未包含（留待后续）**：拖放/单组变更时的局部 `fire(element)` 刷新；工作区全量文件索引（方案 C）
+
+### v1.1.1 杂项修复（2026-08）
+
+| 项 | 说明 |
+|----|------|
+| `extension.ts` 激活错误提示 | `showErrorMessage` 第二参数不能传 `error` 对象；改为将 `Error.message` 拼入提示字符串 |
+
+### v1.1.1 Bugfix 记录 — 子分组内文件无法拖放（2026-08）
+
+| Bug | 根因 | 修复 |
+|-----|------|------|
+| 子分组内文件无法拖放 | 拖放仅用自定义 JSON MIME，未注册 VS Code 官方 `application/vnd.code.tree.tabgroupsview`；嵌套树节点拖放需通过 `DataTransferItem.value` 保留 `TreeElement` 实例；`handleDrop` 仅接受 `GroupTreeItem` 为目标，拖到文件行上无效 | 改用官方 tree MIME + `text/uri-list`；`handleDrag` 写入源节点数组；`handleDrop` 从 `transferItem.value` 解析 `FileTreeItem` / `GroupTreeItem`；支持以 `FileTreeItem` 为放置目标（解析为其所属分组）；`FileTreeItem` 设置 `resourceUri`；视图开启 `canSelectMany` |
+
+**涉及文件**：`src/treeProvider.ts`、`package.json`
+
+### v1.1.2 实现记录 — 添加游标（2026-08）
+
+| 项 | 决策 |
+|----|------|
+| 入口 | 侧边栏文件右键「添加游标」；编辑器内快捷键（默认可在「自定义快捷键」中配置，默认 `ctrl+shift+l`） |
+| 前置条件 | 文件已在分组中；编辑器打开该文件且光标在目标行（树节点触发时同理） |
+| 多分组 | 同一文件在多个分组时，快捷键触发 QuickPick 选择目标分组 |
+| 记录内容 | 保存 `line` / `column`（0-based） |
+| 打开行为 | 单击文件 / 展开分组批量打开时跳转到记录行 |
+| 展示 | `description` / `tooltip` 追加 `· L42` |
+| 数据结构 | `GroupFileEntry` 扩展 `line?`、`column?`；配置版本 `1.2.0` |
+
+**新增源码**：`src/fileLocationUtils.ts`
+
+### v1.1.2 Bugfix 记录 — 文件拖放仍无效（2026-08）
+
+| Bug | 根因 | 修复 |
+|-----|------|------|
+| 文件拖到分组仍无效 | 树 MIME 写错为 `tabgroupsview`（应为 `tabGroupsView`）；`resourceUri` 被移除后无法启动拖放；`DataTransferItem` 用 JSON 字符串在同树拖放中丢失 | 修正 MIME 大小写；恢复 `resourceUri`（不设 `text/uri-list`）；文件 payload 用对象 `value` 传递；树节点 `id` 改为 `file:<groupId>::<path>` 便于解析；`getTreeTransferItem` 遍历所有 tree MIME |
+
+**涉及文件**：`src/treeProvider.ts`
+
+---

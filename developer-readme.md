@@ -67,6 +67,7 @@ interface ShortcutSettings {
   removeFromGroup: string; // 「取消分组」，默认 ctrl+shift+o
   createGroup: string;     // 「新建分组」，默认 ctrl+shift+u
   deleteGroup: string;     // 「删除分组」，默认 ctrl+shift+p
+  addCursor: string;       // 「添加游标」，默认 ctrl+shift+l
 }
 ```
 
@@ -96,12 +97,18 @@ interface ShortcutSettings {
 ```
 
 **侧边栏标题栏（view/title）**：
-- 新建分组（需单根工作区）
+- 新建分组（需单根工作区，创建**根级**分组）
 - **自定义快捷键**（v2，始终显示，无工作区限制；保存时需单根工作区）
+
+**分组节点 inline 按钮（＋）**：
+- 仅分组节点显示（`viewItem == group || groupRegex`）
+- 点击后在当前分组下**新建子分组**（`tabGroups.createSubGroup`）
+- 顶栏「＋」与快捷键 `ctrl+shift+u` 仍创建**根级**分组（`tabGroups.createGroup`）
 
 **分组节点右键菜单**（仅作用于当前分组，不在插件顶栏提供）：
 - 删除分组
 - 重命名分组
+- **新建子分组**
 - **展开分组**（打开组内所有文件）：一键在编辑器中打开该分组 `files` 中的全部文件；不存在的文件跳过；最后一个文件获得焦点
 - **折叠分组**（关闭组内所有文件）：一键关闭编辑器中属于该分组的所有已打开标签页
 - 设置为手动
@@ -115,6 +122,8 @@ interface ShortcutSettings {
 **文件节点右键菜单**：
 - 打开文件
 - 从分组中移除
+- 重命名
+- **添加游标**（v1.1.2）：保存当前编辑器光标行，打开文件时跳转；默认快捷键 `ctrl+shift+l`
 - 复制路径
 
 ### 3.3 编辑器标签右键菜单
@@ -125,9 +134,9 @@ interface ShortcutSettings {
 
 命令：`tabGroups.customizeShortcuts`
 
-- 以 Webview 面板展示四条可绑定命令及当前快捷键
+- 以 Webview 面板展示五条可绑定命令及当前快捷键
 - 点击快捷键框后**按键捕获**录入新组合
-- **保存**：写入工作区 `tabGroups.shortcuts`，并同步替换用户 `keybindings.json` 中本扩展的四条绑定
+- **保存**：写入工作区 `tabGroups.shortcuts`，并同步替换用户 `keybindings.json` 中本扩展的五条绑定
 - **恢复默认**：还原为 `DEFAULT_SHORTCUTS`（仅 Webview 内预览，需点保存才写入）
 - 无单根工作区时可打开面板预览，但无法保存
 
@@ -137,6 +146,7 @@ interface ShortcutSettings {
 |------|----------|-------------|
 | 加入分组 | `ctrl+shift+i` | `workspaceFolderCount == 1 && resourceScheme == file` |
 | 取消分组 | `ctrl+shift+o` | 同上 |
+| 添加游标 | `ctrl+shift+l` | `workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus` |
 | 新建分组 | `ctrl+shift+u` | `workspaceFolderCount == 1` |
 | 删除分组 | `ctrl+shift+p` | 同上 |
 
@@ -164,24 +174,38 @@ interface ShortcutSettings {
 
 ### 4.3 文件操作
 - **加入分组**：将当前活动标签的 URI 转换为相对路径，添加到目标分组的 `files` 数组（避免重复）。
+- **添加游标**（v1.1.2）：文件加入分组后，在编辑器定位光标，通过侧边栏右键或快捷键 `ctrl+shift+l` 保存；打开时自动跳转到记录行。
 - **取消分组**：从指定分组的 `files` 中移除该路径；选 **全部分组** 时调用 `removeFileFromAllGroups()` 一次性移除（v2）。
 - **单击树视图文件**：调用 `vscode.window.showTextDocument` 打开。
 - **关闭标签不影响分组**：分组中的文件路径不会因为标签关闭而删除。用户必须显式取消分组或从树视图右键移除。
 
-### 4.4 快捷键管理（v2）
+### 4.4 拖放操作（v1.1.1）
+
+| 拖放类型 | 行为 |
+|----------|------|
+| 文件 → 分组 | 从源分组 `files` 移除，加入目标分组（保留 `alias`）；目标已有同路径则仅移除源项；支持多选 |
+| 分组 → 分组 | 整棵子树 reparent 到目标分组下（含子孙组与组内文件）；从旧父 `children` 移除并加入新父 `children`，递归更新 `level` |
+| 无效放置 | 拖入自身、拖入自身子孙、已是目标直接子组 → 无操作 |
+| 放置目标 | 分组节点，或分组内文件节点（解析为所属分组） |
+
+**实现**：`application/vnd.code.tree.tabGroupsView`（分组，MIME 与 view id 大小写一致）+ `application/vnd.tabgroups.file`（文件对象 payload）；文件节点设 `resourceUri` 以启用拖放，但不写入 `text/uri-list`
+
+**实现文件**：`src/treeProvider.ts`（`TreeDragAndDropController`）、`src/tabGroupsManager.ts`（`moveFilesToGroup` / `moveGroupToParent`）、`src/groupHierarchyUtils.ts`（`updateGroupLevels` / `isDescendantOf`）
+
+### 4.5 快捷键管理（v2）
 
 | 场景 | 行为 |
 |------|------|
-| 打开自定义面板 | `tabGroups.customizeShortcuts`，Webview 展示四条命令及当前绑定 |
+| 打开自定义面板 | `tabGroups.customizeShortcuts`，Webview 展示五条命令及当前绑定 |
 | 录入快捷键 | Webview 内按键捕获，格式校验（修饰键 + 主键） |
 | 保存 | `workspace.getConfiguration().update('tabGroups.shortcuts', …, Workspace)` + `syncKeybindingsFromSettings()` |
 | 激活时初始化 | `ensureWorkspaceShortcutSettings()`：补全缺失的工作区配置项 |
-| keybindings 同步 | 读取用户 keybindings.json（JSONC 解析），移除本扩展四条旧绑定，写入新绑定 |
+| keybindings 同步 | 读取用户 keybindings.json（JSONC 解析），移除本扩展五条旧绑定，写入新绑定 |
 | 冲突检测 | 不做（v2 定稿） |
 
 **实现文件**：`src/shortcutUtils.ts`、`src/shortcutsWebview.ts`、`media/shortcuts.*`
 
-### 4.5 数据持久化与同步
+### 4.6 数据持久化与同步
 - 任何修改（增删改分组、文件、配置）都立即写回 JSON 文件。
 - 启动插件时读取 JSON 文件，若文件不存在则创建空结构 `{ groups: [], configs: [] }`。
 - **外部修改自动重载（v1 已实现）**：
@@ -280,7 +304,7 @@ media/shortcuts.js
 - [x] Webview 按键捕获与格式校验
 - [x] 工作区 `tabGroups.shortcuts` 读写与激活时默认值补全
 - [x] 同步用户 `keybindings.json`
-- [x] 四条默认可绑定命令（加入/取消分组、新建/删除分组）
+- [x] 五条默认可绑定命令（加入/取消分组、添加游标、新建/删除分组）
 - [x] 取消分组 QuickPick 增加「全部分组」
 - [x] 删除分组快捷键无树选中时 QuickPick 选分组
 
@@ -301,7 +325,6 @@ media/shortcuts.js
 ## 9. 后续迭代计划（v3）
 
 - **最近使用分组快捷键**：快速将当前文件加入最近使用的分组（v2 已实现基础四条快捷键，此项仍待做）
-- **拖拽支持**：在树视图中拖拽文件到另一个分组
 - **自动分组**：根据打开的文件自动建议加入分组（基于规则）
 - **分组颜色/徽章**：在树视图中显示不同颜色图标
 - **跨工作区共享配置**：支持用户级全局分组（不依赖工作区）
@@ -356,7 +379,8 @@ media/shortcuts.js
     "addToGroup": "ctrl+shift+i",
     "removeFromGroup": "ctrl+shift+o",
     "createGroup": "ctrl+shift+u",
-    "deleteGroup": "ctrl+shift+p"
+    "deleteGroup": "ctrl+shift+p",
+    "addCursor": "ctrl+shift+l"
   }
 }
 ```

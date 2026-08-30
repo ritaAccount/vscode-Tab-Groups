@@ -26,7 +26,8 @@
             "addToGroup": "ctrl+shift+i",
             "removeFromGroup": "ctrl+shift+o",
             "createGroup": "ctrl+shift+u",
-            "deleteGroup": "ctrl+shift+p"
+            "deleteGroup": "ctrl+shift+p",
+            "addCursor": "ctrl+shift+l"
           },
           "properties": {
             "addToGroup": {
@@ -36,6 +37,10 @@
             "removeFromGroup": {
               "type": "string",
               "description": "「取消分组」快捷键"
+            },
+            "addCursor": {
+              "type": "string",
+              "description": "「添加游标」快捷键"
             },
             "createGroup": {
               "type": "string",
@@ -62,7 +67,8 @@
       "tab-groups": [
         {
           "id": "tabGroupsView",
-          "name": "标签分组"
+          "name": "标签分组",
+          "canSelectMany": true
         }
       ]
     },
@@ -82,7 +88,8 @@
       },
       {
         "command": "tabGroups.createSubGroup",
-        "title": "新建子分组"
+        "title": "新建子分组",
+        "icon": "$(add)"
       },
       {
         "command": "tabGroups.expandAll",
@@ -129,6 +136,10 @@
         "title": "重命名"
       },
       {
+        "command": "tabGroups.addCursor",
+        "title": "添加游标"
+      },
+      {
         "command": "tabGroups.addToGroup",
         "title": "加入分组"
       },
@@ -162,6 +173,11 @@
         "command": "tabGroups.deleteGroup",
         "key": "ctrl+shift+p",
         "when": "workspaceFolderCount == 1"
+      },
+      {
+        "command": "tabGroups.addCursor",
+        "key": "ctrl+shift+l",
+        "when": "workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus"
       }
     ],
     "menus": {
@@ -179,8 +195,8 @@
       ],
       "view/item/context": [
         {
-          "command": "tabGroups.createGroup",
-          "when": "view == tabGroupsView && workspaceFolderCount == 1",
+          "command": "tabGroups.createSubGroup",
+          "when": "view == tabGroupsView && (viewItem == group || viewItem == groupRegex) && workspaceFolderCount == 1",
           "group": "inline"
         },
         {
@@ -249,9 +265,14 @@
           "group": "1_file@3"
         },
         {
+          "command": "tabGroups.addCursor",
+          "when": "view == tabGroupsView && viewItem == file && workspaceFolderCount == 1",
+          "group": "1_file@4"
+        },
+        {
           "command": "tabGroups.copyPath",
           "when": "view == tabGroupsView && (viewItem == file || viewItem == missingFile) && workspaceFolderCount == 1",
-          "group": "1_file@4"
+          "group": "1_file@5"
         }
       ],
       "editor/title/context": [

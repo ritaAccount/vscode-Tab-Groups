@@ -7,6 +7,7 @@
     removeFromGroup: 'ctrl+shift+o',
     createGroup: 'ctrl+shift+u',
     deleteGroup: 'ctrl+shift+p',
+    addCursor: 'ctrl+shift+l',
   };
 
   /** @type {string | null} */
