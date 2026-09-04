@@ -98,7 +98,7 @@ interface ShortcutSettings {
 
 **侧边栏标题栏（view/title）**：
 - 新建分组（需单根工作区，创建**根级**分组）
-- **自定义快捷键**（v2，始终显示，无工作区限制；保存时需单根工作区）
+- **设置**（始终显示，无工作区限制；打开设置页，当前含「快捷键」分类；保存快捷键时需单根工作区）
 
 **分组节点 inline 按钮（＋）**：
 - 仅分组节点显示（`viewItem == group || groupRegex`）
@@ -130,12 +130,14 @@ interface ShortcutSettings {
 - **加入分组** → 弹出快速选择，列出所有分组（显示分组名），选择后当前文件路径加入该分组的 `files` 数组（去重）。
 - **取消分组** → 弹出快速选择，首项为 **全部分组**（v2，一次性从所有包含该文件的分组中移除）；其余项为当前文件所属的分组，选择后从该分组中移除。
 
-### 3.4 自定义快捷键 Webview（v2）
+### 3.4 设置页 Webview（左分类 + 右内容）
 
-命令：`tabGroups.customizeShortcuts`
+命令：`tabGroups.openSettings`
 
-- 以 Webview 面板展示五条可绑定命令及当前快捷键
-- 点击快捷键框后**按键捕获**录入新组合
+- 侧边栏标题栏齿轮图标打开 Webview 面板「Tab Groups 设置」
+- 布局：左侧设置分类，右侧当前分类内容（对齐 Cursor Settings）
+- 当前分类仅 **快捷键**（后续可扩展 nav，不改入口）
+- **快捷键** 分类：展示五条可绑定命令及当前快捷键；点击快捷键框后**按键捕获**录入新组合
 - **保存**：写入工作区 `tabGroups.shortcuts`，并同步替换用户 `keybindings.json` 中本扩展的五条绑定
 - **恢复默认**：还原为 `DEFAULT_SHORTCUTS`（仅 Webview 内预览，需点保存才写入）
 - 无单根工作区时可打开面板预览，但无法保存
@@ -196,14 +198,14 @@ interface ShortcutSettings {
 
 | 场景 | 行为 |
 |------|------|
-| 打开自定义面板 | `tabGroups.customizeShortcuts`，Webview 展示五条命令及当前绑定 |
+| 打开设置页 | `tabGroups.openSettings`，左分类右内容；默认选中「快捷键」 |
 | 录入快捷键 | Webview 内按键捕获，格式校验（修饰键 + 主键） |
 | 保存 | `workspace.getConfiguration().update('tabGroups.shortcuts', …, Workspace)` + `syncKeybindingsFromSettings()` |
 | 激活时初始化 | `ensureWorkspaceShortcutSettings()`：补全缺失的工作区配置项 |
 | keybindings 同步 | 读取用户 keybindings.json（JSONC 解析），移除本扩展五条旧绑定，写入新绑定 |
 | 冲突检测 | 不做（v2 定稿） |
 
-**实现文件**：`src/shortcutUtils.ts`、`src/shortcutsWebview.ts`、`media/shortcuts.*`
+**实现文件**：`src/shortcutUtils.ts`、`src/settingsWebview.ts`、`media/settings.*`、`media/shortcuts.*`
 
 ### 4.6 数据持久化与同步
 - 任何修改（增删改分组、文件、配置）都立即写回 JSON 文件。
@@ -250,9 +252,11 @@ interface ShortcutSettings {
 
 ```
 src/shortcutUtils.ts      # 快捷键配置读写、keybindings.json 同步
-src/shortcutsWebview.ts   # 自定义快捷键 Webview
+src/settingsWebview.ts    # 设置页 Webview（左分类 + 右内容）
+media/settings.css
+media/settings.js
 media/shortcuts.css
-media/shortcuts.js
+media/shortcuts.js        # 快捷键 pane：按键捕获逻辑
 ```
 
 ---
@@ -300,7 +304,7 @@ media/shortcuts.js
 - [ ] 发布到 Marketplace
 
 ### 阶段 8：快捷键（v2）
-- [x] `tabGroups.customizeShortcuts` 命令与 `view/title` 按钮
+- [x] `tabGroups.openSettings` 命令与 `view/title`「设置」按钮（左分类右内容；当前仅「快捷键」）
 - [x] Webview 按键捕获与格式校验
 - [x] 工作区 `tabGroups.shortcuts` 读写与激活时默认值补全
 - [x] 同步用户 `keybindings.json`
@@ -318,7 +322,7 @@ media/shortcuts.js
 4. **性能**：扫描大量文件时使用 `withProgress` 并支持取消。
 5. **配置文件热重载**：外部修改或编辑器内保存 `.vscode/tab-groups.json` 后自动重新加载（v1 已实现）。
 6. **快捷键同步（v2）**：同步 `keybindings.json` 时整文件 JSON 重写，原有注释可能丢失；`ctrl+shift+p` 与 VS Code 命令面板默认快捷键冲突，需用户自行改绑。
-7. **自定义快捷键保存**：需单根工作区；无工作区时 Webview 可预览不可保存。
+7. **设置页快捷键保存**：需单根工作区；无工作区时 Webview 可预览不可保存。
 
 ---
 

@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import { registerCommands } from './commands';
 import { fileExistenceCache } from './fileExistenceCache';
 import { ensureWorkspaceShortcutSettings, syncKeybindingsFromSettings } from './shortcutUtils';
-import { initializeShortcutSettings, registerShortcutsCommands } from './shortcutsWebview';
+import { initializeShortcutSettings, registerSettingsCommands } from './settingsWebview';
 import { TabGroupsManager } from './tabGroupsManager';
 import { GroupTreeItem, TabGroupsTreeProvider } from './treeProvider';
 import { CONFIG_RELATIVE_PATH } from './types';
@@ -40,7 +40,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   updateTreeViewMessage();
 
   registerCommands(context, manager, treeProvider, treeView);
-  registerShortcutsCommands(context);
+  registerSettingsCommands(context);
 
   context.subscriptions.push(
     treeView,

@@ -3,3 +3,27 @@ node_modules
 .vscode-test/
 *.vsix
 .DS_Store
+
+# Agent / AI assistant config (Cursor, Claude, Codex, etc.)
+.cursor/
+.cursorrules
+.claude/
+CLAUDE.md
+.codex/
+AGENTS.md
+AGENT.md
+.github/copilot-instructions.md
+.github/instructions/
+.github/agents/
+.gemini/
+GEMINI.md
+.windsurf/
+.windsurfrules
+.continue/
+.aider*
+.clinerules
+.cline/
+.roo/
+.trae/
+QWEN.md
+.agent/

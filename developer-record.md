@@ -268,7 +268,7 @@ media/shortcuts.js        # 按键捕获逻辑
 
 | 项 | 决策 |
 |----|------|
-| 入口 | 侧边栏文件右键「添加游标」；编辑器内快捷键（默认可在「自定义快捷键」中配置，默认 `ctrl+shift+l`） |
+| 入口 | 侧边栏文件右键「添加游标」；编辑器内快捷键（默认可在设置页「快捷键」中配置，默认 `ctrl+shift+l`） |
 | 前置条件 | 文件已在分组中；编辑器打开该文件且光标在目标行（树节点触发时同理） |
 | 多分组 | 同一文件在多个分组时，快捷键触发 QuickPick 选择目标分组 |
 | 记录内容 | 保存 `line` / `column`（0-based） |
@@ -285,5 +285,20 @@ media/shortcuts.js        # 按键捕获逻辑
 | 文件拖到分组仍无效 | 树 MIME 写错为 `tabgroupsview`（应为 `tabGroupsView`）；`resourceUri` 被移除后无法启动拖放；`DataTransferItem` 用 JSON 字符串在同树拖放中丢失 | 修正 MIME 大小写；恢复 `resourceUri`（不设 `text/uri-list`）；文件 payload 用对象 `value` 传递；树节点 `id` 改为 `file:<groupId>::<path>` 便于解析；`getTreeTransferItem` 遍历所有 tree MIME |
 
 **涉及文件**：`src/treeProvider.ts`
+
+---
+### v1.1.1 实现记录 — 设置页（左分类 + 右内容）
+
+| 项 | 决策 |
+|----|------|
+| 入口 | 侧边栏标题栏改为「设置」齿轮图标（`tabGroups.openSettings`），替换原「自定义快捷键」键盘按钮 |
+| 布局 | Cursor Settings 风格：左侧分类列表，右侧当前分类内容 |
+| 分类 | 当前仅「快捷键」一项；nav 结构预留扩展，不改入口 |
+| 快捷键 pane | 复用原 Webview 录入/保存/恢复默认逻辑与 `media/shortcuts.*` 按键捕获 |
+| 命令 | 删除 `tabGroups.customizeShortcuts`，统一走 `tabGroups.openSettings` |
+
+**新增源码**：`src/settingsWebview.ts`、`media/settings.css`、`media/settings.js`
+
+**删除源码**：`src/shortcutsWebview.ts`（逻辑迁入 `settingsWebview.ts`）
 
 ---

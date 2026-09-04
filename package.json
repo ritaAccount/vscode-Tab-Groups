@@ -148,9 +148,9 @@
         "title": "取消分组"
       },
       {
-        "command": "tabGroups.customizeShortcuts",
-        "title": "自定义快捷键",
-        "icon": "$(keyboard)"
+        "command": "tabGroups.openSettings",
+        "title": "设置",
+        "icon": "$(gear)"
       }
     ],
     "keybindings": [
@@ -185,12 +185,12 @@
         {
           "command": "tabGroups.createGroup",
           "when": "view == tabGroupsView && workspaceFolderCount == 1",
-          "group": "navigation"
+          "group": "navigation@1"
         },
         {
-          "command": "tabGroups.customizeShortcuts",
+          "command": "tabGroups.openSettings",
           "when": "view == tabGroupsView",
-          "group": "navigation"
+          "group": "navigation@2"
         }
       ],
       "view/item/context": [
