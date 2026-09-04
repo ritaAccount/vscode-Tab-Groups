@@ -98,7 +98,7 @@ interface ShortcutSettings {
 
 **侧边栏标题栏（view/title）**：
 - 新建分组（需单根工作区，创建**根级**分组）
-- **设置**（始终显示，无工作区限制；打开设置页，当前含「快捷键」分类；保存快捷键时需单根工作区）
+- **设置**（始终显示，无工作区限制；打开设置页，含「通用」「快捷键」；保存快捷键/打开配置文件时需单根工作区）
 
 **分组节点 inline 按钮（＋）**：
 - 仅分组节点显示（`viewItem == group || groupRegex`）
@@ -136,11 +136,12 @@ interface ShortcutSettings {
 
 - 侧边栏标题栏齿轮图标打开 Webview 面板「Tab Groups 设置」
 - 布局：左侧设置分类，右侧当前分类内容（对齐 Cursor Settings）
-- 当前分类仅 **快捷键**（后续可扩展 nav，不改入口）
+- 分类：**通用**（默认选中）、**快捷键**
+- **通用**：打开 `.vscode/tab-groups.json`，可分别定位到 `groups`（分组信息）或 `configs`（全局正则规则）；需单根工作区
 - **快捷键** 分类：展示五条可绑定命令及当前快捷键；点击快捷键框后**按键捕获**录入新组合
 - **保存**：写入工作区 `tabGroups.shortcuts`，并同步替换用户 `keybindings.json` 中本扩展的五条绑定
 - **恢复默认**：还原为 `DEFAULT_SHORTCUTS`（仅 Webview 内预览，需点保存才写入）
-- 无单根工作区时可打开面板预览，但无法保存
+- 无单根工作区时可打开面板预览，但无法保存快捷键 / 打开配置文件
 
 **默认快捷键**：
 
@@ -198,7 +199,7 @@ interface ShortcutSettings {
 
 | 场景 | 行为 |
 |------|------|
-| 打开设置页 | `tabGroups.openSettings`，左分类右内容；默认选中「快捷键」 |
+| 打开设置页 | `tabGroups.openSettings`，左分类右内容；默认选中「通用」 |
 | 录入快捷键 | Webview 内按键捕获，格式校验（修饰键 + 主键） |
 | 保存 | `workspace.getConfiguration().update('tabGroups.shortcuts', …, Workspace)` + `syncKeybindingsFromSettings()` |
 | 激活时初始化 | `ensureWorkspaceShortcutSettings()`：补全缺失的工作区配置项 |
@@ -304,7 +305,7 @@ media/shortcuts.js        # 快捷键 pane：按键捕获逻辑
 - [ ] 发布到 Marketplace
 
 ### 阶段 8：快捷键（v2）
-- [x] `tabGroups.openSettings` 命令与 `view/title`「设置」按钮（左分类右内容；当前仅「快捷键」）
+- [x] `tabGroups.openSettings` 命令与 `view/title`「设置」按钮（左分类右内容；「通用」「快捷键」）
 - [x] Webview 按键捕获与格式校验
 - [x] 工作区 `tabGroups.shortcuts` 读写与激活时默认值补全
 - [x] 同步用户 `keybindings.json`

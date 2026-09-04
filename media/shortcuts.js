@@ -1,5 +1,5 @@
 (function () {
-  const vscode = acquireVsCodeApi();
+  const vscode = window.__tabGroupsVscode || acquireVsCodeApi();
 
   /** @type {Record<string, string>} */
   let shortcuts = {
@@ -20,7 +20,9 @@
   const shortcutButtons = Array.from(document.querySelectorAll('[data-shortcut]'));
 
   function setStatus(text) {
-    statusEl.textContent = text || '';
+    if (statusEl) {
+      statusEl.textContent = text || '';
+    }
   }
 
   function renderButtons() {
@@ -120,14 +122,14 @@
     }
   });
 
-  saveButton.addEventListener('click', () => {
+  saveButton?.addEventListener('click', () => {
     vscode.postMessage({
       type: 'save',
       shortcuts: { ...shortcuts },
     });
   });
 
-  resetButton.addEventListener('click', () => {
+  resetButton?.addEventListener('click', () => {
     vscode.postMessage({ type: 'reset' });
   });
 

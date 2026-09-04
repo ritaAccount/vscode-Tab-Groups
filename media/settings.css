@@ -60,3 +60,48 @@ body {
 .settings-pane.active {
   display: block;
 }
+
+.setting-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
+}
+
+.setting-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.setting-title {
+  font-weight: 600;
+  margin-bottom: 4px;
+}
+
+.setting-desc {
+  color: var(--vscode-descriptionForeground);
+  line-height: 1.4;
+}
+
+.setting-item .primary {
+  flex-shrink: 0;
+  padding: 6px 14px;
+  border: none;
+  border-radius: 2px;
+  background: var(--vscode-button-background);
+  color: var(--vscode-button-foreground);
+  cursor: pointer;
+}
+
+.setting-item .primary:hover {
+  background: var(--vscode-button-hoverBackground);
+}
+
+code {
+  font-family: var(--vscode-editor-font-family);
+  font-size: 0.95em;
+}
+

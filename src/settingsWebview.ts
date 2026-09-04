@@ -1,7 +1,8 @@
 import * as vscode from 'vscode';
-import { DEFAULT_SHORTCUTS, ShortcutSettings } from './types';
+import { CONFIG_VERSION } from './fileEntryUtils';
+import { CONFIG_RELATIVE_PATH, DEFAULT_SHORTCUTS, ShortcutSettings } from './types';
 import { ensureWorkspaceShortcutSettings, getShortcuts, saveShortcuts } from './shortcutUtils';
-import { getWorkspaceInvalidMessage, isValidWorkspace } from './workspaceUtils';
+import { getWorkspaceFolder, getWorkspaceInvalidMessage, isValidWorkspace } from './workspaceUtils';
 
 let panel: vscode.WebviewPanel | undefined;
 
@@ -45,11 +46,70 @@ function openSettingsWebview(context: vscode.ExtensionContext): void {
 
     if (message.type === 'save') {
       await handleSave(panel!, message.shortcuts as ShortcutSettings);
+      return;
+    }
+
+    if (message.type === 'openGroupsFile') {
+      await openTabGroupsJson(panel!, 'groups');
+      return;
+    }
+
+    if (message.type === 'openConfigsFile') {
+      await openTabGroupsJson(panel!, 'configs');
     }
   });
 
   panel.onDidDispose(() => {
     panel = undefined;
+  });
+}
+
+async function openTabGroupsJson(
+  webviewPanel: vscode.WebviewPanel,
+  section: 'groups' | 'configs',
+): Promise<void> {
+  if (!isValidWorkspace()) {
+    webviewPanel.webview.postMessage({
+      type: 'generalStatus',
+      text: getWorkspaceInvalidMessage() || '请先打开单根工作区。',
+    });
+    return;
+  }
+
+  const folder = getWorkspaceFolder();
+  if (!folder) {
+    return;
+  }
+
+  const configUri = vscode.Uri.joinPath(folder.uri, CONFIG_RELATIVE_PATH);
+
+  try {
+    await vscode.workspace.fs.stat(configUri);
+  } catch {
+    const initial = Buffer.from(
+      JSON.stringify({ version: CONFIG_VERSION, groups: [], configs: [] }, null, 2),
+      'utf8',
+    );
+    await vscode.workspace.fs.writeFile(configUri, initial);
+  }
+
+  const doc = await vscode.workspace.openTextDocument(configUri);
+  const editor = await vscode.window.showTextDocument(doc, { preview: false });
+
+  const marker = section === 'groups' ? '"groups"' : '"configs"';
+  const index = doc.getText().indexOf(marker);
+  if (index >= 0) {
+    const position = doc.positionAt(index);
+    editor.selection = new vscode.Selection(position, position);
+    editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+  }
+
+  webviewPanel.webview.postMessage({
+    type: 'generalStatus',
+    text:
+      section === 'groups'
+        ? '已打开分组配置文件（.vscode/tab-groups.json → groups）。'
+        : '已打开正则规则配置（.vscode/tab-groups.json → configs）。',
   });
 }
 
@@ -124,10 +184,34 @@ function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): stri
 <body>
   <div class="settings-layout">
     <nav class="settings-nav" aria-label="设置分类">
-      <button type="button" class="nav-item active" data-pane="shortcuts">快捷键</button>
+      <button type="button" class="nav-item active" data-pane="general">通用</button>
+      <button type="button" class="nav-item" data-pane="shortcuts">快捷键</button>
     </nav>
     <main class="settings-content">
-      <section class="settings-pane active" data-pane="shortcuts" id="pane-shortcuts">
+      <section class="settings-pane active" data-pane="general" id="pane-general">
+        <h1>通用</h1>
+        <p class="hint">分组与全局正则规则都保存在工作区的 <code>.vscode/tab-groups.json</code> 中，可分别定位到对应区块。</p>
+
+        <div class="setting-item">
+          <div class="setting-text">
+            <div class="setting-title">分组配置文件</div>
+            <div class="setting-desc">打开记录分组信息的 JSON（定位到 groups）</div>
+          </div>
+          <button type="button" class="primary" id="openGroupsFile">打开</button>
+        </div>
+
+        <div class="setting-item">
+          <div class="setting-text">
+            <div class="setting-title">正则规则配置</div>
+            <div class="setting-desc">打开全局正则规则（定位到 configs）</div>
+          </div>
+          <button type="button" class="primary" id="openConfigsFile">打开</button>
+        </div>
+
+        <div id="generalStatus" class="status"></div>
+      </section>
+
+      <section class="settings-pane" data-pane="shortcuts" id="pane-shortcuts">
         <h1>快捷键</h1>
         <p class="hint">点击快捷键框后按下组合键录入。保存后会写入当前工作区的 .vscode/settings.json，并同步到 keybindings.json。</p>
 

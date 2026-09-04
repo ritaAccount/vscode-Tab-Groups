@@ -293,7 +293,7 @@ media/shortcuts.js        # 按键捕获逻辑
 |----|------|
 | 入口 | 侧边栏标题栏改为「设置」齿轮图标（`tabGroups.openSettings`），替换原「自定义快捷键」键盘按钮 |
 | 布局 | Cursor Settings 风格：左侧分类列表，右侧当前分类内容 |
-| 分类 | 当前仅「快捷键」一项；nav 结构预留扩展，不改入口 |
+| 分类 | 「通用」（默认）+「快捷键」；通用可打开 `tab-groups.json` 的 groups / configs |
 | 快捷键 pane | 复用原 Webview 录入/保存/恢复默认逻辑与 `media/shortcuts.*` 按键捕获 |
 | 命令 | 删除 `tabGroups.customizeShortcuts`，统一走 `tabGroups.openSettings` |
 
