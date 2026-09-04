@@ -1,11 +1,11 @@
 import * as vscode from 'vscode';
-import { Group, GroupFileEntry } from './types';
+import { FileCursor, Group, GroupFileEntry } from './types';
 import { TabGroupsManager } from './tabGroupsManager';
 import { formatFileEntryDescription } from './fileEntryUtils';
 import { fileExistenceCache } from './fileExistenceCache';
 import { isValidWorkspace, toAbsoluteUri } from './workspaceUtils';
 
-export type TreeElement = GroupTreeItem | FileTreeItem;
+export type TreeElement = GroupTreeItem | FileTreeItem | CursorTreeItem;
 
 /** 须与 package.json views.id 完全一致 */
 const TREE_VIEW_MIME = 'application/vnd.code.tree.tabGroupsView';
@@ -40,7 +40,11 @@ export class FileTreeItem extends vscode.TreeItem {
     public readonly fileEntry: GroupFileEntry,
     exists: boolean,
   ) {
-    super(fileEntry.alias, vscode.TreeItemCollapsibleState.None);
+    const hasCursors = (fileEntry.cursors?.length ?? 0) > 0;
+    super(
+      fileEntry.alias,
+      hasCursors ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+    );
     this.relativePath = fileEntry.path;
     this.description = formatFileEntryDescription(fileEntry, exists);
     this.contextValue = exists ? 'file' : 'missingFile';
@@ -66,6 +70,27 @@ export class FileTreeItem extends vscode.TreeItem {
   }
 
   readonly relativePath: string;
+}
+
+export class CursorTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly groupId: string,
+    public readonly relativePath: string,
+    public readonly cursor: FileCursor,
+    public readonly cursorIndex: number,
+  ) {
+    super(cursor.label, vscode.TreeItemCollapsibleState.None);
+    this.contextValue = 'cursor';
+    this.description = `L${cursor.line + 1}:${cursor.column + 1}`;
+    this.tooltip = `${relativePath} · ${cursor.label} · L${cursor.line + 1}:${cursor.column + 1}`;
+    this.iconPath = new vscode.ThemeIcon('debug-stackframe-dot');
+    this.id = buildCursorTreeItemId(groupId, relativePath, cursorIndex);
+    this.command = {
+      command: 'tabGroups.openCursor',
+      title: '打开游标',
+      arguments: [this],
+    };
+  }
 }
 
 export class TabGroupsTreeProvider
@@ -192,7 +217,7 @@ export class TabGroupsTreeProvider
     if (target instanceof GroupTreeItem) {
       return target.group.id;
     }
-    if (target instanceof FileTreeItem) {
+    if (target instanceof FileTreeItem || target instanceof CursorTreeItem) {
       return target.groupId;
     }
     if (typeof target === 'object' && target !== null) {
@@ -251,6 +276,14 @@ export class TabGroupsTreeProvider
   }
 
   getParent(element: TreeElement): TreeElement | undefined {
+    if (element instanceof CursorTreeItem) {
+      const entry = this.manager.getFileEntry(element.groupId, element.relativePath);
+      if (!entry) {
+        return undefined;
+      }
+      return new FileTreeItem(element.groupId, entry, true);
+    }
+
     if (element instanceof FileTreeItem) {
       return this.getGroupTreeItem(element.groupId);
     }
@@ -283,6 +316,14 @@ export class TabGroupsTreeProvider
       return [...childGroups, ...fileItems];
     }
 
+    if (element instanceof FileTreeItem) {
+      const cursors = element.fileEntry.cursors ?? [];
+      return cursors.map(
+        (cursor, index) =>
+          new CursorTreeItem(element.groupId, element.relativePath, cursor, index),
+      );
+    }
+
     return [];
   }
 
@@ -309,6 +350,10 @@ export class TabGroupsTreeProvider
 
 export function buildFileTreeItemId(groupId: string, relativePath: string): string {
   return `file:${groupId}::${relativePath}`;
+}
+
+export function buildCursorTreeItemId(groupId: string, relativePath: string, cursorIndex: number): string {
+  return `cursor:${groupId}::${relativePath}::${cursorIndex}`;
 }
 
 function getTreeTransferItem(dataTransfer: vscode.DataTransfer): vscode.DataTransferItem | undefined {
@@ -349,6 +394,10 @@ function getGroupId(item: unknown): string | undefined {
 }
 
 function getFileDragPayload(item: unknown): FileDragPayload | undefined {
+  if (item instanceof CursorTreeItem) {
+    return undefined;
+  }
+
   if (item instanceof FileTreeItem) {
     return { groupId: item.groupId, path: item.relativePath };
   }
@@ -360,6 +409,11 @@ function getFileDragPayload(item: unknown): FileDragPayload | undefined {
       fileEntry?: { path?: unknown };
       id?: unknown;
     };
+
+    if (typeof candidate.id === 'string' && candidate.id.startsWith('cursor:')) {
+      return undefined;
+    }
+
     const groupId = candidate.groupId;
     const path = candidate.relativePath ?? candidate.fileEntry?.path;
     if (typeof groupId === 'string' && typeof path === 'string') {

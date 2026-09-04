@@ -1,8 +1,9 @@
 import * as vscode from 'vscode';
 import { closeGroupFiles, openGroupFiles } from './groupEditorUtils';
-import { getMatchingActiveEditor, openFileEntry } from './fileLocationUtils';
+import { getMatchingActiveEditor, openFileAtCursor, openFileEntry, revealCursorInEditor } from './fileLocationUtils';
 import { TabGroupsManager } from './tabGroupsManager';
-import { FileTreeItem, GroupTreeItem, TabGroupsTreeProvider } from './treeProvider';
+import { CursorTreeItem, FileTreeItem, GroupTreeItem, TabGroupsTreeProvider } from './treeProvider';
+import { sortCursorsByLine } from './fileEntryUtils';
 import {
   ensureValidWorkspace,
   toAbsoluteUri,
@@ -13,7 +14,7 @@ export function registerCommands(
   context: vscode.ExtensionContext,
   manager: TabGroupsManager,
   treeProvider: TabGroupsTreeProvider,
-  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem>,
+  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem | CursorTreeItem>,
 ): void {
   const register = (command: string, callback: (...args: any[]) => any) => {
     context.subscriptions.push(vscode.commands.registerCommand(command, callback));
@@ -387,6 +388,23 @@ export function registerCommands(
     }
   });
 
+  register('tabGroups.openCursor', async (item?: CursorTreeItem) => {
+    const folder = await ensureValidWorkspace();
+    if (!folder || !(item instanceof CursorTreeItem)) {
+      return;
+    }
+
+    const entry = manager.getFileEntry(item.groupId, item.relativePath);
+    if (!entry) {
+      return;
+    }
+
+    const success = await openFileAtCursor(entry, item.cursor);
+    if (!success) {
+      await vscode.window.showErrorMessage(`无法打开文件：${item.relativePath}`);
+    }
+  });
+
   register('tabGroups.addCursor', async (item?: FileTreeItem) => {
     const folder = await ensureValidWorkspace();
     if (!folder) {
@@ -405,7 +423,7 @@ export function registerCommands(
     }
 
     const { line, character } = editor.selection.active;
-    const updated = await manager.updateFileEntry(target.groupId, target.relativePath, {
+    const updated = await manager.addCursor(target.groupId, target.relativePath, {
       line,
       column: character,
     });
@@ -415,6 +433,58 @@ export function registerCommands(
 
     treeProvider.refresh();
     vscode.window.setStatusBarMessage(`已为「${target.alias}」添加游标 L${line + 1}`, 3000);
+  });
+
+  register('tabGroups.deleteCursor', async (item?: CursorTreeItem) => {
+    const folder = await ensureValidWorkspace();
+    if (!folder || !(item instanceof CursorTreeItem)) {
+      return;
+    }
+
+    const removed = await manager.removeCursor(item.groupId, item.relativePath, item.cursorIndex);
+    if (!removed) {
+      return;
+    }
+
+    treeProvider.refresh();
+    vscode.window.setStatusBarMessage(`已删除游标「${item.cursor.label}」`, 3000);
+  });
+
+  register('tabGroups.renameCursor', async (item?: CursorTreeItem) => {
+    const folder = await ensureValidWorkspace();
+    if (!folder || !(item instanceof CursorTreeItem)) {
+      return;
+    }
+
+    const newLabel = await vscode.window.showInputBox({
+      prompt: '请输入游标名称',
+      value: item.cursor.label,
+      validateInput: (value) => (value.trim() ? undefined : '名称不能为空'),
+    });
+    if (!newLabel) {
+      return;
+    }
+
+    const renamed = await manager.renameCursor(
+      item.groupId,
+      item.relativePath,
+      item.cursorIndex,
+      newLabel.trim(),
+    );
+    if (!renamed) {
+      return;
+    }
+
+    treeProvider.refresh();
+    vscode.window.setStatusBarMessage(`游标已重命名为「${newLabel.trim()}」`, 3000);
+  });
+
+  register('tabGroups.prevCursor', async () => {
+    await jumpCursor(manager, 'prev');
+  });
+
+  register('tabGroups.nextCursor', async () => {
+    await jumpCursor(manager, 'next');
   });
 
   register('tabGroups.removeFile', async (item?: FileTreeItem) => {
@@ -573,7 +643,7 @@ export function registerCommands(
 
 function resolveGroupItem(
   item: GroupTreeItem | undefined,
-  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem>,
+  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem | CursorTreeItem>,
 ): GroupTreeItem | undefined {
   if (item instanceof GroupTreeItem) {
     return item;
@@ -594,7 +664,7 @@ interface AddCursorTarget {
 async function resolveAddCursorTarget(
   item: FileTreeItem | undefined,
   manager: TabGroupsManager,
-  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem>,
+  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem | CursorTreeItem>,
 ): Promise<AddCursorTarget | undefined> {
   const fileItem = resolveFileItem(item, treeView);
   if (fileItem) {
@@ -653,7 +723,7 @@ async function resolveAddCursorTarget(
 
 function resolveFileItem(
   item: FileTreeItem | undefined,
-  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem>,
+  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem | CursorTreeItem>,
 ): FileTreeItem | undefined {
   if (item instanceof FileTreeItem) {
     return item;
@@ -663,4 +733,87 @@ function resolveFileItem(
     return selection;
   }
   return undefined;
+}
+
+async function jumpCursor(manager: TabGroupsManager, direction: 'prev' | 'next'): Promise<void> {
+  const folder = await ensureValidWorkspace();
+  if (!folder) {
+    return;
+  }
+
+  const editor = vscode.window.activeTextEditor;
+  if (!editor) {
+    await vscode.window.showWarningMessage('请先在编辑器中打开文件。');
+    return;
+  }
+
+  const relativePath = toRelativePath(editor.document.uri);
+  if (!relativePath) {
+    await vscode.window.showWarningMessage('只能在工作区内的文件中跳转游标。');
+    return;
+  }
+
+  const groups = manager.getGroupsContainingFile(relativePath).filter((group) => {
+    const entry = manager.getFileEntry(group.id, relativePath);
+    return (entry?.cursors?.length ?? 0) > 0;
+  });
+
+  if (groups.length === 0) {
+    await vscode.window.showWarningMessage('当前文件没有已保存的游标。');
+    return;
+  }
+
+  let groupId = groups[0].id;
+  if (groups.length > 1) {
+    const picked = await vscode.window.showQuickPick(
+      groups.map((group) => ({
+        label: manager.getGroupPathLabel(group.id),
+        groupId: group.id,
+      })),
+      { placeHolder: '选择要跳转游标的分组' },
+    );
+    if (!picked) {
+      return;
+    }
+    groupId = picked.groupId;
+  }
+
+  const entry = manager.getFileEntry(groupId, relativePath);
+  const cursors = entry?.cursors;
+  if (!cursors || cursors.length === 0) {
+    return;
+  }
+
+  const ordered = sortCursorsByLine(cursors);
+  const current = editor.selection.active;
+  let index = ordered.findIndex(
+    (cursor) =>
+      cursor.line > current.line ||
+      (cursor.line === current.line && cursor.column >= current.character),
+  );
+
+  if (direction === 'next') {
+    if (index < 0) {
+      index = 0;
+    } else if (
+      ordered[index].line === current.line &&
+      ordered[index].column === current.character
+    ) {
+      index = (index + 1) % ordered.length;
+    }
+  } else {
+    if (index < 0) {
+      index = ordered.length - 1;
+    } else if (
+      ordered[index].line === current.line &&
+      ordered[index].column === current.character
+    ) {
+      index = (index - 1 + ordered.length) % ordered.length;
+    } else {
+      index = (index - 1 + ordered.length) % ordered.length;
+    }
+  }
+
+  await revealCursorInEditor(editor, ordered[index]);
+  vscode.window.setStatusBarMessage(`游标：${ordered[index].label}`, 2000);
 }

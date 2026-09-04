@@ -10,7 +10,7 @@ import { getWorkspaceInvalidMessage, isValidWorkspace, toRelativePath } from './
 
 let manager: TabGroupsManager | undefined;
 let treeProvider: TabGroupsTreeProvider | undefined;
-let treeViewRef: vscode.TreeView<GroupTreeItem | import('./treeProvider').FileTreeItem> | undefined;
+let treeViewRef: vscode.TreeView<import('./treeProvider').TreeElement> | undefined;
 let configWatcher: vscode.FileSystemWatcher | undefined;
 let workspaceFileWatcher: vscode.FileSystemWatcher | undefined;
 let isReloadingFromDisk = false;
@@ -40,7 +40,11 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
   updateTreeViewMessage();
 
   registerCommands(context, manager, treeProvider, treeView);
-  registerSettingsCommands(context);
+  registerSettingsCommands(context, manager, {
+    onConfigUpgraded: () => {
+      treeProvider?.refresh();
+    },
+  });
 
   context.subscriptions.push(
     treeView,

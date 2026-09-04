@@ -31,10 +31,15 @@ export interface Group {
 export interface GroupFileEntry {
   path: string;
   alias: string;
-  /** 0-based line number for cursor restore */
-  line?: number;
-  /** 0-based column number for cursor restore */
-  column?: number;
+  cursors?: FileCursor[];
+}
+
+export interface FileCursor {
+  /** 0-based line number */
+  line: number;
+  /** 0-based column number */
+  column: number;
+  label: string;
 }
 
 export interface TabGroupsData {
@@ -51,6 +56,8 @@ export interface ShortcutSettings {
   createGroup: string;
   deleteGroup: string;
   addCursor: string;
+  prevCursor: string;
+  nextCursor: string;
 }
 
 export const DEFAULT_SHORTCUTS: ShortcutSettings = {
@@ -59,6 +66,8 @@ export const DEFAULT_SHORTCUTS: ShortcutSettings = {
   createGroup: 'ctrl+shift+u',
   deleteGroup: 'ctrl+shift+p',
   addCursor: 'ctrl+shift+l',
+  prevCursor: 'ctrl+shift+[',
+  nextCursor: 'ctrl+shift+]',
 };
 
 export const SHORTCUT_COMMANDS = {
@@ -67,6 +76,8 @@ export const SHORTCUT_COMMANDS = {
   createGroup: 'tabGroups.createGroup',
   deleteGroup: 'tabGroups.deleteGroup',
   addCursor: 'tabGroups.addCursor',
+  prevCursor: 'tabGroups.prevCursor',
+  nextCursor: 'tabGroups.nextCursor',
 } as const;
 
 export const SHORTCUT_WHEN = {

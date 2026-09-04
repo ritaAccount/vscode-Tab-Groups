@@ -27,7 +27,9 @@
             "removeFromGroup": "ctrl+shift+o",
             "createGroup": "ctrl+shift+u",
             "deleteGroup": "ctrl+shift+p",
-            "addCursor": "ctrl+shift+l"
+            "addCursor": "ctrl+shift+l",
+            "prevCursor": "ctrl+shift+[",
+            "nextCursor": "ctrl+shift+]"
           },
           "properties": {
             "addToGroup": {
@@ -41,6 +43,14 @@
             "addCursor": {
               "type": "string",
               "description": "「添加游标」快捷键"
+            },
+            "prevCursor": {
+              "type": "string",
+              "description": "「上一游标」快捷键"
+            },
+            "nextCursor": {
+              "type": "string",
+              "description": "「下一游标」快捷键"
             },
             "createGroup": {
               "type": "string",
@@ -140,6 +150,26 @@
         "title": "添加游标"
       },
       {
+        "command": "tabGroups.deleteCursor",
+        "title": "删除游标"
+      },
+      {
+        "command": "tabGroups.renameCursor",
+        "title": "重命名游标"
+      },
+      {
+        "command": "tabGroups.openCursor",
+        "title": "打开游标"
+      },
+      {
+        "command": "tabGroups.prevCursor",
+        "title": "上一游标"
+      },
+      {
+        "command": "tabGroups.nextCursor",
+        "title": "下一游标"
+      },
+      {
         "command": "tabGroups.addToGroup",
         "title": "加入分组"
       },
@@ -177,6 +207,16 @@
       {
         "command": "tabGroups.addCursor",
         "key": "ctrl+shift+l",
+        "when": "workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus"
+      },
+      {
+        "command": "tabGroups.prevCursor",
+        "key": "ctrl+shift+[",
+        "when": "workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus"
+      },
+      {
+        "command": "tabGroups.nextCursor",
+        "key": "ctrl+shift+]",
         "when": "workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus"
       }
     ],
@@ -268,6 +308,16 @@
           "command": "tabGroups.addCursor",
           "when": "view == tabGroupsView && viewItem == file && workspaceFolderCount == 1",
           "group": "1_file@4"
+        },
+        {
+          "command": "tabGroups.deleteCursor",
+          "when": "view == tabGroupsView && viewItem == cursor && workspaceFolderCount == 1",
+          "group": "1_cursor@1"
+        },
+        {
+          "command": "tabGroups.renameCursor",
+          "when": "view == tabGroupsView && viewItem == cursor && workspaceFolderCount == 1",
+          "group": "1_cursor@2"
         },
         {
           "command": "tabGroups.copyPath",

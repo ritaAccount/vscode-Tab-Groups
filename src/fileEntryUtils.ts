@@ -1,20 +1,63 @@
-import { Group, GroupFileEntry } from './types';
+import { FileCursor, Group, GroupFileEntry } from './types';
 
-export const CONFIG_VERSION = '1.2.0';
+export const CONFIG_VERSION = '1.3.0';
 
 export function defaultAliasFromPath(relativePath: string): string {
   return relativePath.split('/').pop() ?? relativePath;
+}
+
+export function defaultCursorLabel(line: number): string {
+  return `L${line + 1}`;
 }
 
 function readOptionalNumber(value: unknown): number | undefined {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0 ? value : undefined;
 }
 
-export function formatFileLocationSuffix(entry: GroupFileEntry): string {
-  if (entry.line !== undefined) {
-    return ` · L${entry.line + 1}`;
+function normalizeCursor(raw: unknown): FileCursor | undefined {
+  if (typeof raw !== 'object' || raw === null) {
+    return undefined;
   }
-  return '';
+
+  const candidate = raw as { line?: unknown; column?: unknown; label?: unknown };
+  const line = readOptionalNumber(candidate.line);
+  if (line === undefined) {
+    return undefined;
+  }
+
+  const column = readOptionalNumber(candidate.column) ?? 0;
+  const label =
+    typeof candidate.label === 'string' && candidate.label.trim()
+      ? candidate.label.trim()
+      : defaultCursorLabel(line);
+
+  return { line, column, label };
+}
+
+function normalizeCursors(raw: unknown): FileCursor[] | undefined {
+  if (!Array.isArray(raw)) {
+    return undefined;
+  }
+
+  const cursors: FileCursor[] = [];
+  for (const item of raw) {
+    const cursor = normalizeCursor(item);
+    if (cursor) {
+      cursors.push(cursor);
+    }
+  }
+  return cursors.length > 0 ? cursors : undefined;
+}
+
+export function formatFileLocationSuffix(entry: GroupFileEntry): string {
+  const cursors = entry.cursors;
+  if (!cursors || cursors.length === 0) {
+    return '';
+  }
+  if (cursors.length === 1) {
+    return ` · L${cursors[0].line + 1}`;
+  }
+  return ` · ${cursors.length} 处游标`;
 }
 
 export function formatFileEntryDescription(entry: GroupFileEntry, exists: boolean): string {
@@ -32,7 +75,7 @@ export function normalizeFileEntry(raw: unknown): GroupFileEntry | undefined {
   }
 
   if (typeof raw === 'object' && raw !== null && typeof (raw as GroupFileEntry).path === 'string') {
-    const rawEntry = raw as GroupFileEntry;
+    const rawEntry = raw as GroupFileEntry & { line?: number; column?: number };
     const path = rawEntry.path.trim();
     if (!path) {
       return undefined;
@@ -43,14 +86,22 @@ export function normalizeFileEntry(raw: unknown): GroupFileEntry | undefined {
       alias: alias || defaultAliasFromPath(path),
     };
 
-    const line = readOptionalNumber(rawEntry.line);
-    const column = readOptionalNumber(rawEntry.column);
-
-    if (line !== undefined) {
-      entry.line = line;
+    const fromArray = normalizeCursors(rawEntry.cursors);
+    if (fromArray) {
+      entry.cursors = fromArray;
+      return entry;
     }
-    if (column !== undefined) {
-      entry.column = column;
+
+    // 旧版单点 line/column → cursors[]
+    const line = readOptionalNumber(rawEntry.line);
+    if (line !== undefined) {
+      entry.cursors = [
+        {
+          line,
+          column: readOptionalNumber(rawEntry.column) ?? 0,
+          label: defaultCursorLabel(line),
+        },
+      ];
     }
 
     return entry;
@@ -113,4 +164,8 @@ export function buildScannedFiles(existingFiles: GroupFileEntry[], matchedPaths:
       alias: defaultAliasFromPath(path),
     };
   });
+}
+
+export function sortCursorsByLine(cursors: FileCursor[]): FileCursor[] {
+  return [...cursors].sort((a, b) => a.line - b.line || a.column - b.column);
 }

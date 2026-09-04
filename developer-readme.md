@@ -68,6 +68,8 @@ interface ShortcutSettings {
   createGroup: string;     // 「新建分组」，默认 ctrl+shift+u
   deleteGroup: string;     // 「删除分组」，默认 ctrl+shift+p
   addCursor: string;       // 「添加游标」，默认 ctrl+shift+l
+  prevCursor: string;      // 「上一游标」，默认 ctrl+shift+[
+  nextCursor: string;      // 「下一游标」，默认 ctrl+shift+]
 }
 ```
 
@@ -120,11 +122,15 @@ interface ShortcutSettings {
 > **注意**：「展开/折叠分组」指的是**编辑器标签页**的批量打开/关闭，**不是**侧边栏树节点的展开/折叠。树节点仍可通过点击分组名称旁的箭头手动展开/折叠以查看文件列表。
 
 **文件节点右键菜单**：
-- 打开文件
+- 打开文件（跳转 `cursors[0]`，无游标则打开文件开头）
 - 从分组中移除
 - 重命名
-- **添加游标**（v1.1.2）：保存当前编辑器光标行，打开文件时跳转；默认快捷键 `ctrl+shift+l`
+- **添加游标**（追加到 `cursors[]`）；默认快捷键 `ctrl+shift+l`
 - 复制路径
+
+**游标子节点**（文件下可展开）：
+- 单击：打开并跳转到该游标
+- 右键：**删除游标**、**重命名**（改 `label`）
 
 ### 3.3 编辑器标签右键菜单
 - **加入分组** → 弹出快速选择，列出所有分组（显示分组名），选择后当前文件路径加入该分组的 `files` 数组（去重）。
@@ -137,11 +143,11 @@ interface ShortcutSettings {
 - 侧边栏标题栏齿轮图标打开 Webview 面板「Tab Groups 设置」
 - 布局：左侧设置分类，右侧当前分类内容（对齐 Cursor Settings）
 - 分类：**通用**（默认选中）、**快捷键**
-- **通用**：打开 `.vscode/tab-groups.json`，可分别定位到 `groups`（分组信息）或 `configs`（全局正则规则）；需单根工作区
-- **快捷键** 分类：展示五条可绑定命令及当前快捷键；点击快捷键框后**按键捕获**录入新组合
-- **保存**：写入工作区 `tabGroups.shortcuts`，并同步替换用户 `keybindings.json` 中本扩展的五条绑定
+- **通用**：打开 `.vscode/tab-groups.json`（`groups` / `configs`）；**配置版本更新**（比较文件 `version` 与 schema `CONFIG_VERSION`，落后则迁移写回）
+- **快捷键** 分类：展示可绑定命令及当前快捷键；点击快捷键框后**按键捕获**录入新组合
+- **保存**：写入工作区 `tabGroups.shortcuts`，并同步替换用户 `keybindings.json` 中本扩展绑定
 - **恢复默认**：还原为 `DEFAULT_SHORTCUTS`（仅 Webview 内预览，需点保存才写入）
-- 无单根工作区时可打开面板预览，但无法保存快捷键 / 打开配置文件
+- 无单根工作区时可打开面板预览，但无法保存快捷键 / 打开配置文件 / 升级配置
 
 **默认快捷键**：
 
@@ -149,9 +155,11 @@ interface ShortcutSettings {
 |------|----------|-------------|
 | 加入分组 | `ctrl+shift+i` | `workspaceFolderCount == 1 && resourceScheme == file` |
 | 取消分组 | `ctrl+shift+o` | 同上 |
-| 添加游标 | `ctrl+shift+l` | `workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus` |
 | 新建分组 | `ctrl+shift+u` | `workspaceFolderCount == 1` |
 | 删除分组 | `ctrl+shift+p` | 同上 |
+| 添加游标 | `ctrl+shift+l` | `workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus` |
+| 上一游标 | `ctrl+shift+[` | 同上 |
+| 下一游标 | `ctrl+shift+]` | 同上 |
 
 ---
 
@@ -177,7 +185,7 @@ interface ShortcutSettings {
 
 ### 4.3 文件操作
 - **加入分组**：将当前活动标签的 URI 转换为相对路径，添加到目标分组的 `files` 数组（避免重复）。
-- **添加游标**（v1.1.2）：文件加入分组后，在编辑器定位光标，通过侧边栏右键或快捷键 `ctrl+shift+l` 保存；打开时自动跳转到记录行。
+- **添加游标**：追加到 `cursors[]`（含 `label`，默认 `L{n}`）；单击文件打开跳 `cursors[0]`；上一/下一游标快捷键按行循环跳转。
 - **取消分组**：从指定分组的 `files` 中移除该路径；选 **全部分组** 时调用 `removeFileFromAllGroups()` 一次性移除（v2）。
 - **单击树视图文件**：调用 `vscode.window.showTextDocument` 打开。
 - **关闭标签不影响分组**：分组中的文件路径不会因为标签关闭而删除。用户必须显式取消分组或从树视图右键移除。
@@ -385,7 +393,9 @@ media/shortcuts.js        # 快捷键 pane：按键捕获逻辑
     "removeFromGroup": "ctrl+shift+o",
     "createGroup": "ctrl+shift+u",
     "deleteGroup": "ctrl+shift+p",
-    "addCursor": "ctrl+shift+l"
+    "addCursor": "ctrl+shift+l",
+    "prevCursor": "ctrl+shift+[",
+    "nextCursor": "ctrl+shift+]"
   }
 }
 ```

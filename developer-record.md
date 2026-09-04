@@ -302,3 +302,19 @@ media/shortcuts.js        # 按键捕获逻辑
 **删除源码**：`src/shortcutsWebview.ts`（逻辑迁入 `settingsWebview.ts`）
 
 ---
+
+### v1.1.3 实现记录 — 多游标 cursors[]（2026-09）
+
+| 项 | 决策 |
+|----|------|
+| 存储 | `cursors: [{ line, column, label }]`；去掉顶层 `line`/`column`；配置 schema `1.3.0` |
+| 迁移 | 旧单点 `line`/`column` → 一条 cursor（label 默认 `L{n}`） |
+| 内存 | 直接改数组，保存写回 JSON（不做链表） |
+| 树 | 文件可展开为游标子节点；单击文件跳 `cursors[0]`；单击游标跳该条 |
+| 添加 | 追加；删除/重命名在游标节点右键 |
+| 快捷键 | `prevCursor`/`nextCursor` 默认 `ctrl+shift+[` / `]`；设置页可改 |
+| 通用设置 | 「配置版本更新」：比较 `tab-groups.json` 的 `version` 与 `CONFIG_VERSION`，落后则 `upgradeConfigIfNeeded` |
+
+**涉及文件**：`types.ts`、`fileEntryUtils.ts`、`fileLocationUtils.ts`、`tabGroupsManager.ts`、`treeProvider.ts`、`commands.ts`、`shortcutUtils.ts`、`settingsWebview.ts`、`package.json`、`media/*`
+
+---

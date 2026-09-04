@@ -4,6 +4,7 @@ import {
   buildScannedFiles,
   CONFIG_VERSION,
   defaultAliasFromPath,
+  defaultCursorLabel,
   groupContainsPath,
   isVersionLessThan,
   normalizeGroupFiles,
@@ -391,39 +392,91 @@ export class TabGroupsManager {
     return collectAllFileEntries(this.data.groups, groupId);
   }
 
-  async updateFileEntry(
+  async addCursor(
     groupId: string,
     filePath: string,
-    patch: Partial<Pick<GroupFileEntry, 'line' | 'column'>>,
+    cursor: { line: number; column: number; label?: string },
   ): Promise<boolean> {
-    const group = this.getGroup(groupId);
-    if (!group) {
-      return false;
-    }
-
-    const entry = group.files.find((file) => file.path === filePath);
+    const entry = this.getFileEntry(groupId, filePath);
     if (!entry) {
       return false;
     }
 
-    if ('line' in patch) {
-      if (patch.line === undefined) {
-        delete entry.line;
-      } else {
-        entry.line = patch.line;
-      }
+    if (!entry.cursors) {
+      entry.cursors = [];
     }
 
-    if ('column' in patch) {
-      if (patch.column === undefined) {
-        delete entry.column;
-      } else {
-        entry.column = patch.column;
-      }
+    entry.cursors.push({
+      line: cursor.line,
+      column: cursor.column,
+      label: cursor.label?.trim() || defaultCursorLabel(cursor.line),
+    });
+
+    await this.save();
+    return true;
+  }
+
+  async removeCursor(groupId: string, filePath: string, cursorIndex: number): Promise<boolean> {
+    const entry = this.getFileEntry(groupId, filePath);
+    if (!entry?.cursors || cursorIndex < 0 || cursorIndex >= entry.cursors.length) {
+      return false;
+    }
+
+    entry.cursors.splice(cursorIndex, 1);
+    if (entry.cursors.length === 0) {
+      delete entry.cursors;
     }
 
     await this.save();
     return true;
+  }
+
+  async renameCursor(
+    groupId: string,
+    filePath: string,
+    cursorIndex: number,
+    label: string,
+  ): Promise<boolean> {
+    const entry = this.getFileEntry(groupId, filePath);
+    if (!entry?.cursors || cursorIndex < 0 || cursorIndex >= entry.cursors.length) {
+      return false;
+    }
+
+    const trimmed = label.trim();
+    if (!trimmed) {
+      return false;
+    }
+
+    entry.cursors[cursorIndex].label = trimmed;
+    await this.save();
+    return true;
+  }
+
+  getGroupsContainingFile(filePath: string): Group[] {
+    return this.data.groups.filter((group) => groupContainsPath(group, filePath));
+  }
+
+  getConfigVersion(): string | undefined {
+    return this.data.version;
+  }
+
+  needsConfigUpgrade(): boolean {
+    return isVersionLessThan(this.data.version, CONFIG_VERSION);
+  }
+
+  /** 重新加载并按当前 schema 迁移；若配置版本落后则升级写回。 */
+  async upgradeConfigIfNeeded(): Promise<{ upgraded: boolean; from?: string; to: string }> {
+    const from = this.data.version;
+    if (!this.needsConfigUpgrade()) {
+      return { upgraded: false, from, to: CONFIG_VERSION };
+    }
+
+    await this.load();
+    if (this.data.version !== CONFIG_VERSION) {
+      this.data.version = CONFIG_VERSION;
+      await this.save();
+    }
+    return { upgraded: true, from, to: CONFIG_VERSION };
   }
 
   async setGroupConfig(groupId: string, config: InlineConfig): Promise<void> {
@@ -478,10 +531,6 @@ export class TabGroupsManager {
     }
     group.files = buildScannedFiles(group.files, matchedPaths);
     await this.save();
-  }
-
-  getGroupsContainingFile(filePath: string): Group[] {
-    return this.data.groups.filter((group) => groupContainsPath(group, filePath));
   }
 
   getConfigFileUri(): vscode.Uri | undefined {

@@ -1,12 +1,25 @@
 import * as vscode from 'vscode';
 import { CONFIG_VERSION } from './fileEntryUtils';
+import { TabGroupsManager } from './tabGroupsManager';
 import { CONFIG_RELATIVE_PATH, DEFAULT_SHORTCUTS, ShortcutSettings } from './types';
 import { ensureWorkspaceShortcutSettings, getShortcuts, saveShortcuts } from './shortcutUtils';
 import { getWorkspaceFolder, getWorkspaceInvalidMessage, isValidWorkspace } from './workspaceUtils';
 
 let panel: vscode.WebviewPanel | undefined;
+let settingsManager: TabGroupsManager | undefined;
+let onConfigUpgraded: (() => void) | undefined;
+let extensionVersion = 'unknown';
 
-export function registerSettingsCommands(context: vscode.ExtensionContext): void {
+export function registerSettingsCommands(
+  context: vscode.ExtensionContext,
+  manager: TabGroupsManager,
+  options?: { onConfigUpgraded?: () => void },
+): void {
+  settingsManager = manager;
+  onConfigUpgraded = options?.onConfigUpgraded;
+  extensionVersion =
+    (context.extension.packageJSON as { version?: string }).version ?? 'unknown';
+
   context.subscriptions.push(
     vscode.commands.registerCommand('tabGroups.openSettings', () => {
       openSettingsWebview(context);
@@ -17,6 +30,7 @@ export function registerSettingsCommands(context: vscode.ExtensionContext): void
 function openSettingsWebview(context: vscode.ExtensionContext): void {
   if (panel) {
     panel.reveal(vscode.ViewColumn.One);
+    postVersionInfo(panel);
     return;
   }
 
@@ -36,6 +50,7 @@ function openSettingsWebview(context: vscode.ExtensionContext): void {
   panel.webview.onDidReceiveMessage(async (message) => {
     if (message.type === 'ready') {
       postInit(panel!, getShortcuts());
+      postVersionInfo(panel!);
       return;
     }
 
@@ -56,12 +71,73 @@ function openSettingsWebview(context: vscode.ExtensionContext): void {
 
     if (message.type === 'openConfigsFile') {
       await openTabGroupsJson(panel!, 'configs');
+      return;
+    }
+
+    if (message.type === 'upgradeConfig') {
+      await handleUpgradeConfig(panel!);
     }
   });
 
   panel.onDidDispose(() => {
     panel = undefined;
   });
+}
+
+function postVersionInfo(webviewPanel: vscode.WebviewPanel): void {
+  webviewPanel.webview.postMessage({
+    type: 'versionInfo',
+    extensionVersion,
+    configVersion: settingsManager?.getConfigVersion() ?? '（无）',
+    schemaVersion: CONFIG_VERSION,
+    needsUpgrade: settingsManager?.needsConfigUpgrade() ?? false,
+  });
+}
+
+async function handleUpgradeConfig(webviewPanel: vscode.WebviewPanel): Promise<void> {
+  if (!isValidWorkspace()) {
+    webviewPanel.webview.postMessage({
+      type: 'generalStatus',
+      text: getWorkspaceInvalidMessage() || '请先打开单根工作区。',
+    });
+    return;
+  }
+
+  if (!settingsManager) {
+    webviewPanel.webview.postMessage({
+      type: 'generalStatus',
+      text: '内部错误：配置管理器未初始化。',
+    });
+    return;
+  }
+
+  if (!settingsManager.needsConfigUpgrade()) {
+    webviewPanel.webview.postMessage({
+      type: 'generalStatus',
+      text: `配置已是最新（schema ${CONFIG_VERSION}），无需更新。`,
+    });
+    postVersionInfo(webviewPanel);
+    return;
+  }
+
+  try {
+    const result = await settingsManager.upgradeConfigIfNeeded();
+    await ensureWorkspaceShortcutSettings();
+    onConfigUpgraded?.();
+    postVersionInfo(webviewPanel);
+    webviewPanel.webview.postMessage({
+      type: 'generalStatus',
+      text: result.upgraded
+        ? `配置已从 ${result.from ?? '未知'} 升级到 ${result.to}。`
+        : `配置已是最新（schema ${CONFIG_VERSION}）。`,
+    });
+    vscode.window.setStatusBarMessage('Tab Groups 配置已检查/升级', 3000);
+  } catch (error) {
+    webviewPanel.webview.postMessage({
+      type: 'generalStatus',
+      text: error instanceof Error ? error.message : '升级配置失败',
+    });
+  }
 }
 
 async function openTabGroupsJson(
@@ -208,6 +284,14 @@ function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): stri
           <button type="button" class="primary" id="openConfigsFile">打开</button>
         </div>
 
+        <div class="setting-item">
+          <div class="setting-text">
+            <div class="setting-title">配置版本更新</div>
+            <div class="setting-desc" id="versionDesc">检查并升级 tab-groups.json schema</div>
+          </div>
+          <button type="button" class="primary" id="upgradeConfig">检查更新</button>
+        </div>
+
         <div id="generalStatus" class="status"></div>
       </section>
 
@@ -224,16 +308,24 @@ function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): stri
           <button id="removeFromGroup" class="shortcut-button" type="button" data-shortcut="removeFromGroup">ctrl+shift+o</button>
         </div>
         <div class="row">
-          <span class="label">添加游标</span>
-          <button id="addCursor" class="shortcut-button" type="button" data-shortcut="addCursor">ctrl+shift+l</button>
-        </div>
-        <div class="row">
           <span class="label">新建分组</span>
           <button id="createGroup" class="shortcut-button" type="button" data-shortcut="createGroup">ctrl+shift+u</button>
         </div>
         <div class="row">
           <span class="label">删除分组</span>
           <button id="deleteGroup" class="shortcut-button" type="button" data-shortcut="deleteGroup">ctrl+shift+p</button>
+        </div>
+        <div class="row">
+          <span class="label">添加游标</span>
+          <button id="addCursor" class="shortcut-button" type="button" data-shortcut="addCursor">ctrl+shift+l</button>
+        </div>
+        <div class="row">
+          <span class="label">上一游标</span>
+          <button id="prevCursor" class="shortcut-button" type="button" data-shortcut="prevCursor">ctrl+shift+[</button>
+        </div>
+        <div class="row">
+          <span class="label">下一游标</span>
+          <button id="nextCursor" class="shortcut-button" type="button" data-shortcut="nextCursor">ctrl+shift+]</button>
         </div>
 
         <div id="status" class="status"></div>
