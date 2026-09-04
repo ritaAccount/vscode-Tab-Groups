@@ -18,7 +18,7 @@ interface KeybindingEntry {
 }
 
 const SHORTCUT_PATTERN =
-  /^(?:(?:ctrl|cmd|shift|alt|opt|win)\+)+(?:[a-z0-9]+|\[|\]|space|enter|tab|escape|backspace|delete|home|end|pageup|pagedown|left|right|up|down|f[1-9]|f1[0-2])$/i;
+  /^(?:(?:ctrl|cmd|shift|alt|opt|win)\+)+(?:[a-z0-9]+|\[|\]|;|'|"|space|enter|tab|escape|backspace|delete|home|end|pageup|pagedown|left|right|up|down|f[1-9]|f1[0-2])$/i;
 
 const SHORTCUT_ENTRIES: Array<{
   settingKey: keyof ShortcutSettings;
@@ -27,11 +27,13 @@ const SHORTCUT_ENTRIES: Array<{
 }> = [
   { settingKey: 'addToGroup', command: SHORTCUT_COMMANDS.addToGroup, when: SHORTCUT_WHEN.file },
   { settingKey: 'removeFromGroup', command: SHORTCUT_COMMANDS.removeFromGroup, when: SHORTCUT_WHEN.file },
-  { settingKey: 'addCursor', command: SHORTCUT_COMMANDS.addCursor, when: SHORTCUT_WHEN.fileEditor },
-  { settingKey: 'prevCursor', command: SHORTCUT_COMMANDS.prevCursor, when: SHORTCUT_WHEN.fileEditor },
-  { settingKey: 'nextCursor', command: SHORTCUT_COMMANDS.nextCursor, when: SHORTCUT_WHEN.fileEditor },
   { settingKey: 'createGroup', command: SHORTCUT_COMMANDS.createGroup, when: SHORTCUT_WHEN.workspace },
   { settingKey: 'deleteGroup', command: SHORTCUT_COMMANDS.deleteGroup, when: SHORTCUT_WHEN.workspace },
+  { settingKey: 'addCursor', command: SHORTCUT_COMMANDS.addCursor, when: SHORTCUT_WHEN.fileEditor },
+  { settingKey: 'addFunction', command: SHORTCUT_COMMANDS.addFunction, when: SHORTCUT_WHEN.fileEditor },
+  { settingKey: 'addText', command: SHORTCUT_COMMANDS.addText, when: SHORTCUT_WHEN.fileEditor },
+  { settingKey: 'prevCursor', command: SHORTCUT_COMMANDS.prevCursor, when: SHORTCUT_WHEN.fileEditor },
+  { settingKey: 'nextCursor', command: SHORTCUT_COMMANDS.nextCursor, when: SHORTCUT_WHEN.fileEditor },
 ];
 
 const SHORTCUT_KEYS = Object.keys(DEFAULT_SHORTCUTS) as Array<keyof ShortcutSettings>;
@@ -51,6 +53,8 @@ function mergeShortcutSettings(partial?: Partial<ShortcutSettings>): ShortcutSet
     createGroup: partial?.createGroup?.trim() || DEFAULT_SHORTCUTS.createGroup,
     deleteGroup: partial?.deleteGroup?.trim() || DEFAULT_SHORTCUTS.deleteGroup,
     addCursor: partial?.addCursor?.trim() || DEFAULT_SHORTCUTS.addCursor,
+    addFunction: partial?.addFunction?.trim() || DEFAULT_SHORTCUTS.addFunction,
+    addText: partial?.addText?.trim() || DEFAULT_SHORTCUTS.addText,
     prevCursor: partial?.prevCursor?.trim() || DEFAULT_SHORTCUTS.prevCursor,
     nextCursor: partial?.nextCursor?.trim() || DEFAULT_SHORTCUTS.nextCursor,
   };

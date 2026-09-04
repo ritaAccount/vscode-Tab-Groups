@@ -6,6 +6,7 @@ import { initializeShortcutSettings, registerSettingsCommands } from './settings
 import { TabGroupsManager } from './tabGroupsManager';
 import { GroupTreeItem, TabGroupsTreeProvider } from './treeProvider';
 import { CONFIG_RELATIVE_PATH } from './types';
+import { registerMarkerJumpHint } from './fileLocationUtils';
 import { getWorkspaceInvalidMessage, isValidWorkspace, toRelativePath } from './workspaceUtils';
 
 let manager: TabGroupsManager | undefined;
@@ -39,6 +40,7 @@ export async function activate(context: vscode.ExtensionContext): Promise<void> 
 
   updateTreeViewMessage();
 
+  registerMarkerJumpHint(context);
   registerCommands(context, manager, treeProvider, treeView);
   registerSettingsCommands(context, manager, {
     onConfigUpgraded: () => {

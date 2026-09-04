@@ -1,8 +1,20 @@
 import * as vscode from 'vscode';
 import { CONFIG_VERSION } from './fileEntryUtils';
+import {
+  ensureWorkspaceDisplaySettings,
+  getDisplaySettings,
+  saveDisplaySettings,
+} from './displaySettingsUtils';
 import { TabGroupsManager } from './tabGroupsManager';
-import { CONFIG_RELATIVE_PATH, DEFAULT_SHORTCUTS, ShortcutSettings } from './types';
+import {
+  CONFIG_RELATIVE_PATH,
+  DEFAULT_DISPLAY_SETTINGS,
+  DEFAULT_SHORTCUTS,
+  DisplaySettings,
+  ShortcutSettings,
+} from './types';
 import { ensureWorkspaceShortcutSettings, getShortcuts, saveShortcuts } from './shortcutUtils';
+import { applyMarkerJumpHintVisibility } from './fileLocationUtils';
 import { getWorkspaceFolder, getWorkspaceInvalidMessage, isValidWorkspace } from './workspaceUtils';
 
 let panel: vscode.WebviewPanel | undefined;
@@ -31,6 +43,7 @@ function openSettingsWebview(context: vscode.ExtensionContext): void {
   if (panel) {
     panel.reveal(vscode.ViewColumn.One);
     postVersionInfo(panel);
+    postDisplayInit(panel, getDisplaySettings());
     return;
   }
 
@@ -50,6 +63,7 @@ function openSettingsWebview(context: vscode.ExtensionContext): void {
   panel.webview.onDidReceiveMessage(async (message) => {
     if (message.type === 'ready') {
       postInit(panel!, getShortcuts());
+      postDisplayInit(panel!, getDisplaySettings());
       postVersionInfo(panel!);
       return;
     }
@@ -61,6 +75,16 @@ function openSettingsWebview(context: vscode.ExtensionContext): void {
 
     if (message.type === 'save') {
       await handleSave(panel!, message.shortcuts as ShortcutSettings);
+      return;
+    }
+
+    if (message.type === 'resetDisplay') {
+      await handleSaveDisplay(panel!, { ...DEFAULT_DISPLAY_SETTINGS }, '已恢复默认并保存。');
+      return;
+    }
+
+    if (message.type === 'saveDisplay') {
+      await handleSaveDisplay(panel!, message.display as DisplaySettings);
       return;
     }
 
@@ -94,6 +118,42 @@ function postVersionInfo(webviewPanel: vscode.WebviewPanel): void {
   });
 }
 
+function postDisplayInit(webviewPanel: vscode.WebviewPanel, display: DisplaySettings): void {
+  webviewPanel.webview.postMessage({
+    type: 'displayInit',
+    display,
+  });
+}
+
+async function handleSaveDisplay(
+  webviewPanel: vscode.WebviewPanel,
+  display: DisplaySettings,
+  successText = '已保存',
+): Promise<void> {
+  if (!isValidWorkspace()) {
+    webviewPanel.webview.postMessage({
+      type: 'displayStatus',
+      text: getWorkspaceInvalidMessage() || '请先打开单根工作区后再保存。',
+    });
+    return;
+  }
+
+  try {
+    const saved = await saveDisplaySettings(display);
+    applyMarkerJumpHintVisibility();
+    webviewPanel.webview.postMessage({
+      type: 'displaySaved',
+      display: saved,
+      text: successText,
+    });
+  } catch (error) {
+    webviewPanel.webview.postMessage({
+      type: 'displayStatus',
+      text: error instanceof Error ? error.message : '保存失败',
+    });
+  }
+}
+
 async function handleUpgradeConfig(webviewPanel: vscode.WebviewPanel): Promise<void> {
   if (!isValidWorkspace()) {
     webviewPanel.webview.postMessage({
@@ -123,6 +183,7 @@ async function handleUpgradeConfig(webviewPanel: vscode.WebviewPanel): Promise<v
   try {
     const result = await settingsManager.upgradeConfigIfNeeded();
     await ensureWorkspaceShortcutSettings();
+    await ensureWorkspaceDisplaySettings();
     onConfigUpgraded?.();
     postVersionInfo(webviewPanel);
     webviewPanel.webview.postMessage({
@@ -261,82 +322,153 @@ function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): stri
   <div class="settings-layout">
     <nav class="settings-nav" aria-label="设置分类">
       <button type="button" class="nav-item active" data-pane="general">通用</button>
+      <button type="button" class="nav-item" data-pane="display">显示</button>
       <button type="button" class="nav-item" data-pane="shortcuts">快捷键</button>
     </nav>
     <main class="settings-content">
       <section class="settings-pane active" data-pane="general" id="pane-general">
-        <h1>通用</h1>
-        <p class="hint">分组与全局正则规则都保存在工作区的 <code>.vscode/tab-groups.json</code> 中，可分别定位到对应区块。</p>
+        <div class="pane-inner">
+          <h1>通用</h1>
+          <p class="hint">分组与全局正则规则保存在工作区的 <code>.vscode/tab-groups.json</code> 中。</p>
 
-        <div class="setting-item">
-          <div class="setting-text">
-            <div class="setting-title">分组配置文件</div>
-            <div class="setting-desc">打开记录分组信息的 JSON（定位到 groups）</div>
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">分组配置文件</div>
+              <div class="setting-desc">打开并定位到 groups</div>
+            </div>
+            <button type="button" class="primary" id="openGroupsFile">打开</button>
           </div>
-          <button type="button" class="primary" id="openGroupsFile">打开</button>
-        </div>
 
-        <div class="setting-item">
-          <div class="setting-text">
-            <div class="setting-title">正则规则配置</div>
-            <div class="setting-desc">打开全局正则规则（定位到 configs）</div>
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">正则规则配置</div>
+              <div class="setting-desc">打开并定位到 configs</div>
+            </div>
+            <button type="button" class="primary" id="openConfigsFile">打开</button>
           </div>
-          <button type="button" class="primary" id="openConfigsFile">打开</button>
-        </div>
 
-        <div class="setting-item">
-          <div class="setting-text">
-            <div class="setting-title">配置版本更新</div>
-            <div class="setting-desc" id="versionDesc">检查并升级 tab-groups.json schema</div>
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">配置版本更新</div>
+              <div class="setting-desc" id="versionDesc">检查并升级 tab-groups.json schema</div>
+            </div>
+            <button type="button" class="primary" id="upgradeConfig">检查更新</button>
           </div>
-          <button type="button" class="primary" id="upgradeConfig">检查更新</button>
-        </div>
 
-        <div id="generalStatus" class="status"></div>
+          <div id="generalStatus" class="status"></div>
+        </div>
+      </section>
+
+      <section class="settings-pane" data-pane="display" id="pane-display">
+        <div class="pane-inner">
+          <h1>显示</h1>
+          <p class="hint">修改后自动保存到工作区 <code>.vscode/settings.json</code>。</p>
+
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">标记左下角显示</div>
+              <div class="setting-desc">跳转标记时，左下角状态栏如何提示「类型：名称」</div>
+            </div>
+            <select id="markerJumpHintMode" class="setting-select" aria-label="标记左下角显示">
+              <option value="always">一直显示</option>
+              <option value="timed">显示秒数</option>
+              <option value="off">关闭</option>
+            </select>
+          </div>
+
+          <div class="setting-item" id="markerJumpHintSecondsRow" hidden>
+            <div class="setting-text">
+              <div class="setting-title">显示时长</div>
+              <div class="setting-desc">提示在左下角停留的秒数</div>
+            </div>
+            <div class="setting-inline">
+              <input type="number" id="markerJumpHintSeconds" class="seconds-input" min="0.5" max="60" step="0.5" value="1" aria-label="显示时长秒数">
+              <span class="seconds-unit">秒</span>
+            </div>
+          </div>
+
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">恢复默认</div>
+              <div class="setting-desc">重置为一直显示</div>
+            </div>
+            <button type="button" class="secondary" id="resetDisplay">恢复默认</button>
+          </div>
+
+          <div id="displayStatus" class="status"></div>
+        </div>
       </section>
 
       <section class="settings-pane" data-pane="shortcuts" id="pane-shortcuts">
-        <h1>快捷键</h1>
-        <p class="hint">点击快捷键框后按下组合键录入。保存后会写入当前工作区的 .vscode/settings.json，并同步到 keybindings.json。</p>
+        <div class="pane-inner">
+          <h1>快捷键</h1>
+          <p class="hint">点击右侧框后按下组合键录入。保存后写入工作区 settings，并同步到 keybindings。</p>
 
-        <div class="row">
-          <span class="label">加入分组</span>
-          <button id="addToGroup" class="shortcut-button" type="button" data-shortcut="addToGroup">ctrl+shift+i</button>
-        </div>
-        <div class="row">
-          <span class="label">取消分组</span>
-          <button id="removeFromGroup" class="shortcut-button" type="button" data-shortcut="removeFromGroup">ctrl+shift+o</button>
-        </div>
-        <div class="row">
-          <span class="label">新建分组</span>
-          <button id="createGroup" class="shortcut-button" type="button" data-shortcut="createGroup">ctrl+shift+u</button>
-        </div>
-        <div class="row">
-          <span class="label">删除分组</span>
-          <button id="deleteGroup" class="shortcut-button" type="button" data-shortcut="deleteGroup">ctrl+shift+p</button>
-        </div>
-        <div class="row">
-          <span class="label">添加游标</span>
-          <button id="addCursor" class="shortcut-button" type="button" data-shortcut="addCursor">ctrl+shift+l</button>
-        </div>
-        <div class="row">
-          <span class="label">上一游标</span>
-          <button id="prevCursor" class="shortcut-button" type="button" data-shortcut="prevCursor">ctrl+shift+[</button>
-        </div>
-        <div class="row">
-          <span class="label">下一游标</span>
-          <button id="nextCursor" class="shortcut-button" type="button" data-shortcut="nextCursor">ctrl+shift+]</button>
-        </div>
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">加入分组</div>
+            </div>
+            <button id="addToGroup" class="shortcut-button" type="button" data-shortcut="addToGroup">ctrl+shift+i</button>
+          </div>
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">取消分组</div>
+            </div>
+            <button id="removeFromGroup" class="shortcut-button" type="button" data-shortcut="removeFromGroup">ctrl+shift+o</button>
+          </div>
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">新建分组</div>
+            </div>
+            <button id="createGroup" class="shortcut-button" type="button" data-shortcut="createGroup">ctrl+shift+u</button>
+          </div>
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">删除分组</div>
+            </div>
+            <button id="deleteGroup" class="shortcut-button" type="button" data-shortcut="deleteGroup">ctrl+shift+p</button>
+          </div>
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">添加游标</div>
+            </div>
+            <button id="addCursor" class="shortcut-button" type="button" data-shortcut="addCursor">ctrl+shift+l</button>
+          </div>
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">添加函数</div>
+            </div>
+            <button id="addFunction" class="shortcut-button" type="button" data-shortcut="addFunction">ctrl+shift+;</button>
+          </div>
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">字符匹配</div>
+            </div>
+            <button id="addText" class="shortcut-button" type="button" data-shortcut="addText">ctrl+shift+'</button>
+          </div>
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">上一标记</div>
+            </div>
+            <button id="prevCursor" class="shortcut-button" type="button" data-shortcut="prevCursor">ctrl+shift+[</button>
+          </div>
+          <div class="setting-item">
+            <div class="setting-text">
+              <div class="setting-title">下一标记</div>
+            </div>
+            <button id="nextCursor" class="shortcut-button" type="button" data-shortcut="nextCursor">ctrl+shift+]</button>
+          </div>
 
-        <div id="status" class="status"></div>
+          <div id="status" class="status"></div>
 
-        <div class="actions">
-          <button id="save" class="primary" type="button">保存</button>
-          <button id="reset" class="secondary" type="button">恢复默认</button>
-        </div>
+          <div class="actions">
+            <button id="save" class="primary" type="button">保存</button>
+            <button id="reset" class="secondary" type="button">恢复默认</button>
+          </div>
 
-        <div class="warning">
-          保存需要已打开单根工作区。快捷键会写入用户 keybindings.json；若文件中已有注释，同步时可能被移除。
+          <div class="warning">
+            保存需要已打开单根工作区。快捷键会写入用户 keybindings.json；若文件中已有注释，同步时可能被移除。
+          </div>
         </div>
       </section>
     </main>
@@ -350,4 +482,5 @@ function getWebviewHtml(webview: vscode.Webview, extensionUri: vscode.Uri): stri
 
 export async function initializeShortcutSettings(): Promise<void> {
   await ensureWorkspaceShortcutSettings();
+  await ensureWorkspaceDisplaySettings();
 }

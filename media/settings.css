@@ -16,7 +16,7 @@ body {
 }
 
 .settings-nav {
-  flex: 0 0 180px;
+  flex: 0 0 168px;
   padding: 12px 8px;
   border-right: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
   background: var(--vscode-sideBar-background, var(--vscode-editor-background));
@@ -54,20 +54,24 @@ body {
 
 .settings-pane {
   display: none;
-  padding: 16px 24px 24px;
+  padding: 20px 28px 32px;
 }
 
 .settings-pane.active {
   display: block;
 }
 
+.pane-inner {
+  max-width: 720px;
+}
+
 .setting-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 16px;
-  padding: 12px 0;
+  gap: 20px;
+  margin: 0;
+  padding: 14px 0;
   border-bottom: 1px solid var(--vscode-panel-border, var(--vscode-widget-border, transparent));
 }
 
@@ -78,30 +82,59 @@ body {
 
 .setting-title {
   font-weight: 600;
-  margin-bottom: 4px;
+  margin-bottom: 2px;
 }
 
 .setting-desc {
   color: var(--vscode-descriptionForeground);
   line-height: 1.4;
+  font-size: 0.92em;
 }
 
-.setting-item .primary {
+.setting-item .primary,
+.setting-item .secondary {
   flex-shrink: 0;
-  padding: 6px 14px;
-  border: none;
+}
+
+.setting-select {
+  flex-shrink: 0;
+  min-width: 140px;
+  padding: 5px 8px;
+  border: 1px solid var(--vscode-dropdown-border, var(--vscode-input-border, transparent));
   border-radius: 2px;
-  background: var(--vscode-button-background);
-  color: var(--vscode-button-foreground);
+  background: var(--vscode-dropdown-background, var(--vscode-input-background));
+  color: var(--vscode-dropdown-foreground, var(--vscode-input-foreground));
+  font: inherit;
   cursor: pointer;
 }
 
-.setting-item .primary:hover {
-  background: var(--vscode-button-hoverBackground);
+.setting-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.seconds-input {
+  width: 72px;
+  padding: 5px 8px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-input-background);
+  color: var(--vscode-input-foreground);
+  font: inherit;
+}
+
+.seconds-unit {
+  color: var(--vscode-descriptionForeground);
+}
+
+.setting-item .shortcut-button {
+  flex-shrink: 0;
+  min-width: 200px;
 }
 
 code {
   font-family: var(--vscode-editor-font-family);
   font-size: 0.95em;
 }
-

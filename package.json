@@ -28,6 +28,8 @@
             "createGroup": "ctrl+shift+u",
             "deleteGroup": "ctrl+shift+p",
             "addCursor": "ctrl+shift+l",
+            "addFunction": "ctrl+shift+;",
+            "addText": "ctrl+shift+'",
             "prevCursor": "ctrl+shift+[",
             "nextCursor": "ctrl+shift+]"
           },
@@ -44,13 +46,21 @@
               "type": "string",
               "description": "「添加游标」快捷键"
             },
+            "addFunction": {
+              "type": "string",
+              "description": "「添加函数」快捷键"
+            },
+            "addText": {
+              "type": "string",
+              "description": "「添加字符匹配」快捷键"
+            },
             "prevCursor": {
               "type": "string",
-              "description": "「上一游标」快捷键"
+              "description": "「上一标记」快捷键"
             },
             "nextCursor": {
               "type": "string",
-              "description": "「下一游标」快捷键"
+              "description": "「下一标记」快捷键"
             },
             "createGroup": {
               "type": "string",
@@ -59,6 +69,35 @@
             "deleteGroup": {
               "type": "string",
               "description": "「删除分组」快捷键"
+            }
+          }
+        },
+        "tabGroups.display": {
+          "type": "object",
+          "scope": "resource",
+          "description": "Tab Groups 显示相关配置",
+          "default": {
+            "markerJumpHintMode": "always",
+            "markerJumpHintSeconds": 1
+          },
+          "properties": {
+            "markerJumpHintMode": {
+              "type": "string",
+              "enum": ["always", "timed", "off"],
+              "enumDescriptions": [
+                "一直显示",
+                "按秒数显示后消失",
+                "关闭显示"
+              ],
+              "default": "always",
+              "description": "跳转标记时左下角状态栏提示方式"
+            },
+            "markerJumpHintSeconds": {
+              "type": "number",
+              "default": 1,
+              "minimum": 0.5,
+              "maximum": 60,
+              "description": "「显示秒数」模式下，左下角提示停留的秒数"
             }
           }
         }
@@ -150,6 +189,26 @@
         "title": "添加游标"
       },
       {
+        "command": "tabGroups.addFunction",
+        "title": "添加函数"
+      },
+      {
+        "command": "tabGroups.addText",
+        "title": "添加字符匹配"
+      },
+      {
+        "command": "tabGroups.deleteMarker",
+        "title": "删除标记"
+      },
+      {
+        "command": "tabGroups.renameMarker",
+        "title": "重命名标记"
+      },
+      {
+        "command": "tabGroups.openMarker",
+        "title": "打开标记"
+      },
+      {
         "command": "tabGroups.deleteCursor",
         "title": "删除游标"
       },
@@ -163,11 +222,11 @@
       },
       {
         "command": "tabGroups.prevCursor",
-        "title": "上一游标"
+        "title": "上一标记"
       },
       {
         "command": "tabGroups.nextCursor",
-        "title": "下一游标"
+        "title": "下一标记"
       },
       {
         "command": "tabGroups.addToGroup",
@@ -207,6 +266,16 @@
       {
         "command": "tabGroups.addCursor",
         "key": "ctrl+shift+l",
+        "when": "workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus"
+      },
+      {
+        "command": "tabGroups.addFunction",
+        "key": "ctrl+shift+;",
+        "when": "workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus"
+      },
+      {
+        "command": "tabGroups.addText",
+        "key": "ctrl+shift+'",
         "when": "workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus"
       },
       {
@@ -310,14 +379,24 @@
           "group": "1_file@4"
         },
         {
-          "command": "tabGroups.deleteCursor",
-          "when": "view == tabGroupsView && viewItem == cursor && workspaceFolderCount == 1",
-          "group": "1_cursor@1"
+          "command": "tabGroups.addFunction",
+          "when": "view == tabGroupsView && viewItem == file && workspaceFolderCount == 1",
+          "group": "1_file@45"
         },
         {
-          "command": "tabGroups.renameCursor",
-          "when": "view == tabGroupsView && viewItem == cursor && workspaceFolderCount == 1",
-          "group": "1_cursor@2"
+          "command": "tabGroups.addText",
+          "when": "view == tabGroupsView && viewItem == file && workspaceFolderCount == 1",
+          "group": "1_file@46"
+        },
+        {
+          "command": "tabGroups.deleteMarker",
+          "when": "view == tabGroupsView && viewItem == marker && workspaceFolderCount == 1",
+          "group": "1_marker@1"
+        },
+        {
+          "command": "tabGroups.renameMarker",
+          "when": "view == tabGroupsView && viewItem == marker && workspaceFolderCount == 1",
+          "group": "1_marker@2"
         },
         {
           "command": "tabGroups.copyPath",

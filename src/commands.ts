@@ -1,9 +1,11 @@
 import * as vscode from 'vscode';
 import { closeGroupFiles, openGroupFiles } from './groupEditorUtils';
-import { getMatchingActiveEditor, openFileAtCursor, openFileEntry, revealCursorInEditor } from './fileLocationUtils';
+import { getMatchingActiveEditor, openFileAtMarker, openFileEntry, resolveEnclosingFunctionSymbol, revealMarkerInEditor } from './fileLocationUtils';
 import { TabGroupsManager } from './tabGroupsManager';
-import { CursorTreeItem, FileTreeItem, GroupTreeItem, TabGroupsTreeProvider } from './treeProvider';
-import { sortCursorsByLine } from './fileEntryUtils';
+import { FileTreeItem, GroupTreeItem, MarkerTreeItem, MarkerTypeTreeItem, TabGroupsTreeProvider } from './treeProvider';
+import { sortFlatMarkersByLine, flattenMarkers, countMarkers } from './fileEntryUtils';
+
+type TabGroupsTreeElement = GroupTreeItem | FileTreeItem | MarkerTypeTreeItem | MarkerTreeItem;
 import {
   ensureValidWorkspace,
   toAbsoluteUri,
@@ -14,7 +16,7 @@ export function registerCommands(
   context: vscode.ExtensionContext,
   manager: TabGroupsManager,
   treeProvider: TabGroupsTreeProvider,
-  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem | CursorTreeItem>,
+  treeView: vscode.TreeView<TabGroupsTreeElement>,
 ): void {
   const register = (command: string, callback: (...args: any[]) => any) => {
     context.subscriptions.push(vscode.commands.registerCommand(command, callback));
@@ -388,9 +390,9 @@ export function registerCommands(
     }
   });
 
-  register('tabGroups.openCursor', async (item?: CursorTreeItem) => {
+  register('tabGroups.openMarker', async (item?: MarkerTreeItem) => {
     const folder = await ensureValidWorkspace();
-    if (!folder || !(item instanceof CursorTreeItem)) {
+    if (!folder || !(item instanceof MarkerTreeItem)) {
       return;
     }
 
@@ -399,10 +401,15 @@ export function registerCommands(
       return;
     }
 
-    const success = await openFileAtCursor(entry, item.cursor);
+    const success = await openFileAtMarker(entry, item.marker);
     if (!success) {
       await vscode.window.showErrorMessage(`无法打开文件：${item.relativePath}`);
     }
+  });
+
+  // 兼容旧命令 id
+  register('tabGroups.openCursor', async (item?: MarkerTreeItem) => {
+    await vscode.commands.executeCommand('tabGroups.openMarker', item);
   });
 
   register('tabGroups.addCursor', async (item?: FileTreeItem) => {
@@ -411,7 +418,7 @@ export function registerCommands(
       return;
     }
 
-    const target = await resolveAddCursorTarget(item, manager, treeView);
+    const target = await resolveAddMarkerTarget(item, manager, treeView);
     if (!target) {
       return;
     }
@@ -423,7 +430,8 @@ export function registerCommands(
     }
 
     const { line, character } = editor.selection.active;
-    const updated = await manager.addCursor(target.groupId, target.relativePath, {
+    const updated = await manager.addMarker(target.groupId, target.relativePath, {
+      type: 'cursor',
       line,
       column: character,
     });
@@ -435,40 +443,146 @@ export function registerCommands(
     vscode.window.setStatusBarMessage(`已为「${target.alias}」添加游标 L${line + 1}`, 3000);
   });
 
-  register('tabGroups.deleteCursor', async (item?: CursorTreeItem) => {
+  register('tabGroups.addFunction', async (item?: FileTreeItem) => {
     const folder = await ensureValidWorkspace();
-    if (!folder || !(item instanceof CursorTreeItem)) {
+    if (!folder) {
       return;
     }
 
-    const removed = await manager.removeCursor(item.groupId, item.relativePath, item.cursorIndex);
+    const target = await resolveAddMarkerTarget(item, manager, treeView);
+    if (!target) {
+      return;
+    }
+
+    const editor = getMatchingActiveEditor(target.relativePath);
+    if (!editor) {
+      await vscode.window.showWarningMessage(`请打开「${target.relativePath}」并将光标置于函数内。`);
+      return;
+    }
+
+    const enclosing = await resolveEnclosingFunctionSymbol(
+      editor.document,
+      editor.selection.active,
+    );
+    if (!enclosing) {
+      await vscode.window.showWarningMessage('当前位置未检测到函数/方法符号。');
+      return;
+    }
+
+    const { line, character } = enclosing.range.start;
+    const updated = await manager.addMarker(target.groupId, target.relativePath, {
+      type: 'function',
+      line,
+      column: character,
+      label: enclosing.name,
+      symbolName: enclosing.name,
+      symbolKind: enclosing.kind,
+    });
+    if (!updated) {
+      return;
+    }
+
+    treeProvider.refresh();
+    vscode.window.setStatusBarMessage(`已为「${target.alias}」添加函数标记「${enclosing.name}」`, 3000);
+  });
+
+  register('tabGroups.addText', async (item?: FileTreeItem) => {
+    const folder = await ensureValidWorkspace();
+    if (!folder) {
+      return;
+    }
+
+    const target = await resolveAddMarkerTarget(item, manager, treeView);
+    if (!target) {
+      return;
+    }
+
+    const editor = getMatchingActiveEditor(target.relativePath);
+    if (!editor) {
+      await vscode.window.showWarningMessage(`请打开「${target.relativePath}」并选中或定位要匹配的文本。`);
+      return;
+    }
+
+    const selection = editor.selection;
+    let query = editor.document.getText(selection).trim();
+    if (!query) {
+      const wordRange = editor.document.getWordRangeAtPosition(
+        selection.active,
+        /[A-Za-z0-9_$.\-\u4e00-\u9fff]+/,
+      );
+      query = wordRange ? editor.document.getText(wordRange).trim() : '';
+    }
+    if (!query) {
+      const typed = await vscode.window.showInputBox({
+        prompt: '请输入要匹配的字符（支持模糊定位）',
+        validateInput: (value) => (value.trim() ? undefined : '不能为空'),
+      });
+      if (!typed) {
+        return;
+      }
+      query = typed.trim();
+    }
+
+    const { line, character } = selection.active;
+    const updated = await manager.addMarker(target.groupId, target.relativePath, {
+      type: 'text',
+      line,
+      column: character,
+      query,
+      label: query.length > 24 ? `${query.slice(0, 24)}…` : query,
+    });
+    if (!updated) {
+      return;
+    }
+
+    treeProvider.refresh();
+    vscode.window.setStatusBarMessage(`已为「${target.alias}」添加字符匹配「${query}」`, 3000);
+  });
+
+  register('tabGroups.deleteMarker', async (item?: MarkerTreeItem) => {
+    const folder = await ensureValidWorkspace();
+    if (!folder || !(item instanceof MarkerTreeItem)) {
+      return;
+    }
+
+    const removed = await manager.removeMarker(
+      item.groupId,
+      item.relativePath,
+      item.marker.type,
+      item.marker.contentIndex,
+    );
     if (!removed) {
       return;
     }
 
     treeProvider.refresh();
-    vscode.window.setStatusBarMessage(`已删除游标「${item.cursor.label}」`, 3000);
+    vscode.window.setStatusBarMessage(`已删除标记「${item.marker.item.label}」`, 3000);
   });
 
-  register('tabGroups.renameCursor', async (item?: CursorTreeItem) => {
+  register('tabGroups.deleteCursor', async (item?: MarkerTreeItem) => {
+    await vscode.commands.executeCommand('tabGroups.deleteMarker', item);
+  });
+
+  register('tabGroups.renameMarker', async (item?: MarkerTreeItem) => {
     const folder = await ensureValidWorkspace();
-    if (!folder || !(item instanceof CursorTreeItem)) {
+    if (!folder || !(item instanceof MarkerTreeItem)) {
       return;
     }
 
     const newLabel = await vscode.window.showInputBox({
-      prompt: '请输入游标名称',
-      value: item.cursor.label,
+      prompt: '请输入标记名称',
+      value: item.marker.item.label,
       validateInput: (value) => (value.trim() ? undefined : '名称不能为空'),
     });
     if (!newLabel) {
       return;
     }
 
-    const renamed = await manager.renameCursor(
+    const renamed = await manager.renameMarker(
       item.groupId,
       item.relativePath,
-      item.cursorIndex,
+      item.marker.type,
+      item.marker.contentIndex,
       newLabel.trim(),
     );
     if (!renamed) {
@@ -476,15 +590,19 @@ export function registerCommands(
     }
 
     treeProvider.refresh();
-    vscode.window.setStatusBarMessage(`游标已重命名为「${newLabel.trim()}」`, 3000);
+    vscode.window.setStatusBarMessage(`标记已重命名为「${newLabel.trim()}」`, 3000);
+  });
+
+  register('tabGroups.renameCursor', async (item?: MarkerTreeItem) => {
+    await vscode.commands.executeCommand('tabGroups.renameMarker', item);
   });
 
   register('tabGroups.prevCursor', async () => {
-    await jumpCursor(manager, 'prev');
+    await jumpMarker(manager, 'prev');
   });
 
   register('tabGroups.nextCursor', async () => {
-    await jumpCursor(manager, 'next');
+    await jumpMarker(manager, 'next');
   });
 
   register('tabGroups.removeFile', async (item?: FileTreeItem) => {
@@ -643,7 +761,7 @@ export function registerCommands(
 
 function resolveGroupItem(
   item: GroupTreeItem | undefined,
-  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem | CursorTreeItem>,
+  treeView: vscode.TreeView<TabGroupsTreeElement>,
 ): GroupTreeItem | undefined {
   if (item instanceof GroupTreeItem) {
     return item;
@@ -655,17 +773,17 @@ function resolveGroupItem(
   return undefined;
 }
 
-interface AddCursorTarget {
+interface AddMarkerTarget {
   groupId: string;
   relativePath: string;
   alias: string;
 }
 
-async function resolveAddCursorTarget(
+async function resolveAddMarkerTarget(
   item: FileTreeItem | undefined,
   manager: TabGroupsManager,
-  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem | CursorTreeItem>,
-): Promise<AddCursorTarget | undefined> {
+  treeView: vscode.TreeView<TabGroupsTreeElement>,
+): Promise<AddMarkerTarget | undefined> {
   const fileItem = resolveFileItem(item, treeView);
   if (fileItem) {
     return {
@@ -683,7 +801,7 @@ async function resolveAddCursorTarget(
 
   const relativePath = toRelativePath(targetUri);
   if (!relativePath) {
-    await vscode.window.showWarningMessage('只能为工作区内的文件添加游标。');
+    await vscode.window.showWarningMessage('只能为工作区内的文件添加标记。');
     return undefined;
   }
 
@@ -707,7 +825,7 @@ async function resolveAddCursorTarget(
       label: manager.getGroupPathLabel(group.id),
       groupId: group.id,
     })),
-    { placeHolder: '选择要添加游标的分组' },
+    { placeHolder: '选择要添加标记的分组' },
   );
   if (!picked) {
     return undefined;
@@ -723,7 +841,7 @@ async function resolveAddCursorTarget(
 
 function resolveFileItem(
   item: FileTreeItem | undefined,
-  treeView: vscode.TreeView<GroupTreeItem | FileTreeItem | CursorTreeItem>,
+  treeView: vscode.TreeView<TabGroupsTreeElement>,
 ): FileTreeItem | undefined {
   if (item instanceof FileTreeItem) {
     return item;
@@ -735,7 +853,7 @@ function resolveFileItem(
   return undefined;
 }
 
-async function jumpCursor(manager: TabGroupsManager, direction: 'prev' | 'next'): Promise<void> {
+async function jumpMarker(manager: TabGroupsManager, direction: 'prev' | 'next'): Promise<void> {
   const folder = await ensureValidWorkspace();
   if (!folder) {
     return;
@@ -749,17 +867,17 @@ async function jumpCursor(manager: TabGroupsManager, direction: 'prev' | 'next')
 
   const relativePath = toRelativePath(editor.document.uri);
   if (!relativePath) {
-    await vscode.window.showWarningMessage('只能在工作区内的文件中跳转游标。');
+    await vscode.window.showWarningMessage('只能在工作区内的文件中跳转标记。');
     return;
   }
 
   const groups = manager.getGroupsContainingFile(relativePath).filter((group) => {
     const entry = manager.getFileEntry(group.id, relativePath);
-    return (entry?.cursors?.length ?? 0) > 0;
+    return countMarkers(entry?.markers) > 0;
   });
 
   if (groups.length === 0) {
-    await vscode.window.showWarningMessage('当前文件没有已保存的游标。');
+    await vscode.window.showWarningMessage('当前文件没有已保存的标记。');
     return;
   }
 
@@ -770,7 +888,7 @@ async function jumpCursor(manager: TabGroupsManager, direction: 'prev' | 'next')
         label: manager.getGroupPathLabel(group.id),
         groupId: group.id,
       })),
-      { placeHolder: '选择要跳转游标的分组' },
+      { placeHolder: '选择要跳转标记的分组' },
     );
     if (!picked) {
       return;
@@ -779,25 +897,25 @@ async function jumpCursor(manager: TabGroupsManager, direction: 'prev' | 'next')
   }
 
   const entry = manager.getFileEntry(groupId, relativePath);
-  const cursors = entry?.cursors;
-  if (!cursors || cursors.length === 0) {
+  const markers = flattenMarkers(entry?.markers);
+  if (markers.length === 0) {
     return;
   }
 
-  const ordered = sortCursorsByLine(cursors);
+  const ordered = sortFlatMarkersByLine(markers);
   const current = editor.selection.active;
   let index = ordered.findIndex(
-    (cursor) =>
-      cursor.line > current.line ||
-      (cursor.line === current.line && cursor.column >= current.character),
+    (marker) =>
+      marker.item.line > current.line ||
+      (marker.item.line === current.line && marker.item.column >= current.character),
   );
 
   if (direction === 'next') {
     if (index < 0) {
       index = 0;
     } else if (
-      ordered[index].line === current.line &&
-      ordered[index].column === current.character
+      ordered[index].item.line === current.line &&
+      ordered[index].item.column === current.character
     ) {
       index = (index + 1) % ordered.length;
     }
@@ -805,8 +923,8 @@ async function jumpCursor(manager: TabGroupsManager, direction: 'prev' | 'next')
     if (index < 0) {
       index = ordered.length - 1;
     } else if (
-      ordered[index].line === current.line &&
-      ordered[index].column === current.character
+      ordered[index].item.line === current.line &&
+      ordered[index].item.column === current.character
     ) {
       index = (index - 1 + ordered.length) % ordered.length;
     } else {
@@ -814,6 +932,5 @@ async function jumpCursor(manager: TabGroupsManager, direction: 'prev' | 'next')
     }
   }
 
-  await revealCursorInEditor(editor, ordered[index]);
-  vscode.window.setStatusBarMessage(`游标：${ordered[index].label}`, 2000);
+  await revealMarkerInEditor(editor, ordered[index]);
 }

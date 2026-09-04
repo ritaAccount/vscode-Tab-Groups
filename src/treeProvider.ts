@@ -1,11 +1,14 @@
 import * as vscode from 'vscode';
-import { FileCursor, Group, GroupFileEntry } from './types';
+import { FileMarkerType, FlatFileMarker, Group, GroupFileEntry } from './types';
 import { TabGroupsManager } from './tabGroupsManager';
-import { formatFileEntryDescription } from './fileEntryUtils';
+import { countMarkers, formatFileEntryDescription, markerTypeLabel } from './fileEntryUtils';
 import { fileExistenceCache } from './fileExistenceCache';
 import { isValidWorkspace, toAbsoluteUri } from './workspaceUtils';
 
-export type TreeElement = GroupTreeItem | FileTreeItem | CursorTreeItem;
+/** 树中标记类型组的固定顺序 */
+const MARKER_TYPE_ORDER: FileMarkerType[] = ['cursor', 'function', 'text'];
+
+export type TreeElement = GroupTreeItem | FileTreeItem | MarkerTypeTreeItem | MarkerTreeItem;
 
 /** 须与 package.json views.id 完全一致 */
 const TREE_VIEW_MIME = 'application/vnd.code.tree.tabGroupsView';
@@ -40,10 +43,10 @@ export class FileTreeItem extends vscode.TreeItem {
     public readonly fileEntry: GroupFileEntry,
     exists: boolean,
   ) {
-    const hasCursors = (fileEntry.cursors?.length ?? 0) > 0;
+    const hasMarkers = countMarkers(fileEntry.markers) > 0;
     super(
       fileEntry.alias,
-      hasCursors ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
+      hasMarkers ? vscode.TreeItemCollapsibleState.Collapsed : vscode.TreeItemCollapsibleState.None,
     );
     this.relativePath = fileEntry.path;
     this.description = formatFileEntryDescription(fileEntry, exists);
@@ -72,24 +75,63 @@ export class FileTreeItem extends vscode.TreeItem {
   readonly relativePath: string;
 }
 
-export class CursorTreeItem extends vscode.TreeItem {
+/** 文件下的标记类型组（游标 / 函数 / 匹配） */
+export class MarkerTypeTreeItem extends vscode.TreeItem {
   constructor(
     public readonly groupId: string,
     public readonly relativePath: string,
-    public readonly cursor: FileCursor,
-    public readonly cursorIndex: number,
+    public readonly markerType: FileMarkerType,
+    public readonly count: number,
   ) {
-    super(cursor.label, vscode.TreeItemCollapsibleState.None);
-    this.contextValue = 'cursor';
-    this.description = `L${cursor.line + 1}:${cursor.column + 1}`;
-    this.tooltip = `${relativePath} · ${cursor.label} · L${cursor.line + 1}:${cursor.column + 1}`;
-    this.iconPath = new vscode.ThemeIcon('debug-stackframe-dot');
-    this.id = buildCursorTreeItemId(groupId, relativePath, cursorIndex);
+    super(markerTypeLabel(markerType), vscode.TreeItemCollapsibleState.Collapsed);
+    this.contextValue = 'markerType';
+    this.description = String(count);
+    this.tooltip = `${relativePath} · ${markerTypeLabel(markerType)}（${count}）`;
+    this.iconPath = new vscode.ThemeIcon(markerTypeIcon(markerType));
+    this.id = buildMarkerTypeTreeItemId(groupId, relativePath, markerType);
+  }
+}
+
+export class MarkerTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly groupId: string,
+    public readonly relativePath: string,
+    public readonly marker: FlatFileMarker,
+  ) {
+    super(marker.item.label, vscode.TreeItemCollapsibleState.None);
+    this.contextValue = 'marker';
+    const kindLabel = markerTypeLabel(marker.type);
+    this.description = `L${marker.item.line + 1}:${marker.item.column + 1}`;
+    this.tooltip = `${relativePath} · [${kindLabel}] ${marker.item.label} · L${marker.item.line + 1}:${marker.item.column + 1}`;
+    this.iconPath = new vscode.ThemeIcon(markerTypeIcon(marker.type));
+    this.id = buildMarkerTreeItemId(groupId, relativePath, marker.type, marker.contentIndex);
     this.command = {
-      command: 'tabGroups.openCursor',
-      title: '打开游标',
+      command: 'tabGroups.openMarker',
+      title: '打开标记',
       arguments: [this],
     };
+  }
+
+  get markerType(): FileMarkerType {
+    return this.marker.type;
+  }
+
+  get contentIndex(): number {
+    return this.marker.contentIndex;
+  }
+}
+
+/** @deprecated */
+export const CursorTreeItem = MarkerTreeItem;
+
+function markerTypeIcon(type: FileMarkerType): string {
+  switch (type) {
+    case 'function':
+      return 'symbol-method';
+    case 'text':
+      return 'search';
+    default:
+      return 'debug-stackframe-dot';
   }
 }
 
@@ -217,7 +259,11 @@ export class TabGroupsTreeProvider
     if (target instanceof GroupTreeItem) {
       return target.group.id;
     }
-    if (target instanceof FileTreeItem || target instanceof CursorTreeItem) {
+    if (
+      target instanceof FileTreeItem ||
+      target instanceof MarkerTypeTreeItem ||
+      target instanceof MarkerTreeItem
+    ) {
       return target.groupId;
     }
     if (typeof target === 'object' && target !== null) {
@@ -276,7 +322,25 @@ export class TabGroupsTreeProvider
   }
 
   getParent(element: TreeElement): TreeElement | undefined {
-    if (element instanceof CursorTreeItem) {
+    if (element instanceof MarkerTreeItem) {
+      const entry = this.manager.getFileEntry(element.groupId, element.relativePath);
+      if (!entry) {
+        return undefined;
+      }
+      const group = (entry.markers ?? []).find((item) => item.type === element.marker.type);
+      const count = group?.content.length ?? 0;
+      if (count === 0) {
+        return new FileTreeItem(element.groupId, entry, true);
+      }
+      return new MarkerTypeTreeItem(
+        element.groupId,
+        element.relativePath,
+        element.marker.type,
+        count,
+      );
+    }
+
+    if (element instanceof MarkerTypeTreeItem) {
       const entry = this.manager.getFileEntry(element.groupId, element.relativePath);
       if (!entry) {
         return undefined;
@@ -317,10 +381,25 @@ export class TabGroupsTreeProvider
     }
 
     if (element instanceof FileTreeItem) {
-      const cursors = element.fileEntry.cursors ?? [];
-      return cursors.map(
-        (cursor, index) =>
-          new CursorTreeItem(element.groupId, element.relativePath, cursor, index),
+      return listPresentMarkerTypes(element.fileEntry).map(
+        ({ type, count }) =>
+          new MarkerTypeTreeItem(element.groupId, element.relativePath, type, count),
+      );
+    }
+
+    if (element instanceof MarkerTypeTreeItem) {
+      const entry = this.manager.getFileEntry(element.groupId, element.relativePath);
+      const group = (entry?.markers ?? []).find((item) => item.type === element.markerType);
+      if (!group) {
+        return [];
+      }
+      return group.content.map(
+        (item, contentIndex) =>
+          new MarkerTreeItem(element.groupId, element.relativePath, {
+            type: element.markerType,
+            contentIndex,
+            item,
+          }),
       );
     }
 
@@ -352,9 +431,40 @@ export function buildFileTreeItemId(groupId: string, relativePath: string): stri
   return `file:${groupId}::${relativePath}`;
 }
 
-export function buildCursorTreeItemId(groupId: string, relativePath: string, cursorIndex: number): string {
-  return `cursor:${groupId}::${relativePath}::${cursorIndex}`;
+export function buildMarkerTypeTreeItemId(
+  groupId: string,
+  relativePath: string,
+  type: FileMarkerType,
+): string {
+  return `markerType:${groupId}::${relativePath}::${type}`;
 }
+
+export function buildMarkerTreeItemId(
+  groupId: string,
+  relativePath: string,
+  type: FileMarkerType,
+  contentIndex: number,
+): string {
+  return `marker:${groupId}::${relativePath}::${type}::${contentIndex}`;
+}
+
+function listPresentMarkerTypes(
+  entry: GroupFileEntry,
+): Array<{ type: FileMarkerType; count: number }> {
+  const byType = new Map<FileMarkerType, number>();
+  for (const group of entry.markers ?? []) {
+    if (group.content.length > 0) {
+      byType.set(group.type, group.content.length);
+    }
+  }
+  return MARKER_TYPE_ORDER.filter((type) => byType.has(type)).map((type) => ({
+    type,
+    count: byType.get(type)!,
+  }));
+}
+
+/** @deprecated */
+export const buildCursorTreeItemId = buildMarkerTreeItemId;
 
 function getTreeTransferItem(dataTransfer: vscode.DataTransfer): vscode.DataTransferItem | undefined {
   const direct = dataTransfer.get(TREE_VIEW_MIME);
@@ -394,7 +504,7 @@ function getGroupId(item: unknown): string | undefined {
 }
 
 function getFileDragPayload(item: unknown): FileDragPayload | undefined {
-  if (item instanceof CursorTreeItem) {
+  if (item instanceof MarkerTreeItem || item instanceof MarkerTypeTreeItem) {
     return undefined;
   }
 
@@ -410,7 +520,12 @@ function getFileDragPayload(item: unknown): FileDragPayload | undefined {
       id?: unknown;
     };
 
-    if (typeof candidate.id === 'string' && candidate.id.startsWith('cursor:')) {
+    if (
+      typeof candidate.id === 'string' &&
+      (candidate.id.startsWith('marker:') ||
+        candidate.id.startsWith('markerType:') ||
+        candidate.id.startsWith('cursor:'))
+    ) {
       return undefined;
     }
 

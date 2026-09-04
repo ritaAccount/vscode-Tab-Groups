@@ -68,8 +68,10 @@ interface ShortcutSettings {
   createGroup: string;     // 「新建分组」，默认 ctrl+shift+u
   deleteGroup: string;     // 「删除分组」，默认 ctrl+shift+p
   addCursor: string;       // 「添加游标」，默认 ctrl+shift+l
-  prevCursor: string;      // 「上一游标」，默认 ctrl+shift+[
-  nextCursor: string;      // 「下一游标」，默认 ctrl+shift+]
+  addFunction: string;     // 「添加函数」，默认 ctrl+shift+;
+  addText: string;         // 「添加字符匹配」，默认 ctrl+shift+'
+  prevCursor: string;      // 「上一标记」，默认 ctrl+shift+[
+  nextCursor: string;      // 「下一标记」，默认 ctrl+shift+]
 }
 ```
 
@@ -122,15 +124,17 @@ interface ShortcutSettings {
 > **注意**：「展开/折叠分组」指的是**编辑器标签页**的批量打开/关闭，**不是**侧边栏树节点的展开/折叠。树节点仍可通过点击分组名称旁的箭头手动展开/折叠以查看文件列表。
 
 **文件节点右键菜单**：
-- 打开文件（跳转 `cursors[0]`，无游标则打开文件开头）
+- 打开文件（跳转展平后的首个标记，无标记则打开文件开头）
 - 从分组中移除
 - 重命名
-- **添加游标**（追加到 `cursors[]`）；默认快捷键 `ctrl+shift+l`
+- **添加游标** / **添加函数** / **添加字符匹配**（写入对应 `type` 的 `content[]`）
 - 复制路径
 
-**游标子节点**（文件下可展开）：
-- 单击：打开并跳转到该游标
-- 右键：**删除游标**、**重命名**（改 `label`）
+**标记子节点**（文件 → 类型组 → 标记）：
+- 文件下先展示非空类型组：**游标** / **函数** / **匹配**（旁注条数）
+- 组内为具体标记；单击按 type 跳转（函数优先符号名；字符匹配按 `query` 模糊定位；失败回退坐标）
+- 跳转成功后左下角用独立 `StatusBarItem` 显示「类型：名称」；行为由 `tabGroups.display.markerJumpHintMode` 控制（`always` / `timed`+秒数 / `off`）
+- 右键标记：**删除标记**、**重命名标记**
 
 ### 3.3 编辑器标签右键菜单
 - **加入分组** → 弹出快速选择，列出所有分组（显示分组名），选择后当前文件路径加入该分组的 `files` 数组（去重）。
@@ -142,12 +146,14 @@ interface ShortcutSettings {
 
 - 侧边栏标题栏齿轮图标打开 Webview 面板「Tab Groups 设置」
 - 布局：左侧设置分类，右侧当前分类内容（对齐 Cursor Settings）
-- 分类：**通用**（默认选中）、**快捷键**
+- 分类：**通用**（默认选中）、**显示**、**快捷键**
 - **通用**：打开 `.vscode/tab-groups.json`（`groups` / `configs`）；**配置版本更新**（比较文件 `version` 与 schema `CONFIG_VERSION`，落后则迁移写回）
+- **显示**：**标记左下角显示** — 下拉 `always`（一直显示，默认）/ `timed`（显示秒数，出现时长行）/ `off`（关闭）；**改完即存** 至 `tabGroups.display`
 - **快捷键** 分类：展示可绑定命令及当前快捷键；点击快捷键框后**按键捕获**录入新组合
-- **保存**：写入工作区 `tabGroups.shortcuts`，并同步替换用户 `keybindings.json` 中本扩展绑定
-- **恢复默认**：还原为 `DEFAULT_SHORTCUTS`（仅 Webview 内预览，需点保存才写入）
-- 无单根工作区时可打开面板预览，但无法保存快捷键 / 打开配置文件 / 升级配置
+- **保存**：显示配置自动写入；快捷键需点保存写入 `tabGroups.shortcuts` 并同步 keybindings
+- **恢复默认**：显示页立即恢复并保存；快捷键页仅预览，需点保存
+- 无单根工作区时可打开面板预览，但无法保存快捷键 / 显示配置 / 打开配置文件 / 升级配置
+- 三页统一 Setting Row（左标题说明、右控件；内容区 max-width）
 
 **默认快捷键**：
 
@@ -158,8 +164,10 @@ interface ShortcutSettings {
 | 新建分组 | `ctrl+shift+u` | `workspaceFolderCount == 1` |
 | 删除分组 | `ctrl+shift+p` | 同上 |
 | 添加游标 | `ctrl+shift+l` | `workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus` |
-| 上一游标 | `ctrl+shift+[` | 同上 |
-| 下一游标 | `ctrl+shift+]` | 同上 |
+| 添加函数 | `ctrl+shift+;` | 同上 |
+| 添加字符匹配 | `ctrl+shift+'` | 同上 |
+| 上一标记 | `ctrl+shift+[` | 同上 |
+| 下一标记 | `ctrl+shift+]` | 同上 |
 
 ---
 
@@ -185,7 +193,7 @@ interface ShortcutSettings {
 
 ### 4.3 文件操作
 - **加入分组**：将当前活动标签的 URI 转换为相对路径，添加到目标分组的 `files` 数组（避免重复）。
-- **添加游标**：追加到 `cursors[]`（含 `label`，默认 `L{n}`）；单击文件打开跳 `cursors[0]`；上一/下一游标快捷键按行循环跳转。
+- **添加游标 / 函数 / 字符匹配**：写入 `markers: [{ type, content: [...] }]`（`cursor` \| `function` \| `text`）；单击文件打开跳展平后首个标记；上一/下一标记按行循环跳转；上述跳转均会短暂提示标记名称。
 - **取消分组**：从指定分组的 `files` 中移除该路径；选 **全部分组** 时调用 `removeFileFromAllGroups()` 一次性移除（v2）。
 - **单击树视图文件**：调用 `vscode.window.showTextDocument` 打开。
 - **关闭标签不影响分组**：分组中的文件路径不会因为标签关闭而删除。用户必须显式取消分组或从树视图右键移除。
@@ -241,7 +249,8 @@ interface ShortcutSettings {
 | 文件读写 | `vscode.workspace.fs` 或 Node.js `fs` (需 `@types/node`) |
 | 进度条 | `vscode.window.withProgress` |
 | 工作区事件 | `vscode.workspace.onDidChangeWorkspaceFolders` |
-| 状态栏消息 | `vscode.window.setStatusBarMessage` |
+| 状态栏消息 | `vscode.window.setStatusBarMessage`（一般操作反馈） |
+| 标记跳转提示 | 独立 `StatusBarItem`（`registerMarkerJumpHint` / `showMarkerJumpHint`）；配置见 `tabGroups.display` |
 | 工作区配置 | `vscode.workspace.getConfiguration` / `ConfigurationTarget.Workspace` |
 | Webview 面板 | `vscode.window.createWebviewPanel` |
 | 用户 keybindings 读写 | Node.js `fs` + JSONC 简易解析 |
@@ -394,6 +403,7 @@ media/shortcuts.js        # 快捷键 pane：按键捕获逻辑
     "createGroup": "ctrl+shift+u",
     "deleteGroup": "ctrl+shift+p",
     "addCursor": "ctrl+shift+l",
+    "addFunction": "ctrl+shift+;",
     "prevCursor": "ctrl+shift+[",
     "nextCursor": "ctrl+shift+]"
   }

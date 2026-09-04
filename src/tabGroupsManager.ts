@@ -392,53 +392,102 @@ export class TabGroupsManager {
     return collectAllFileEntries(this.data.groups, groupId);
   }
 
-  async addCursor(
+  async addMarker(
     groupId: string,
     filePath: string,
-    cursor: { line: number; column: number; label?: string },
+    marker: {
+      type: import('./types').FileMarkerType;
+      line: number;
+      column: number;
+      label?: string;
+      symbolName?: string;
+      symbolKind?: number;
+      query?: string;
+    },
   ): Promise<boolean> {
     const entry = this.getFileEntry(groupId, filePath);
     if (!entry) {
       return false;
     }
 
-    if (!entry.cursors) {
-      entry.cursors = [];
+    if (!entry.markers) {
+      entry.markers = [];
     }
 
-    entry.cursors.push({
-      line: cursor.line,
-      column: cursor.column,
-      label: cursor.label?.trim() || defaultCursorLabel(cursor.line),
-    });
+    let group = entry.markers.find((g) => g.type === marker.type);
+    if (!group) {
+      group = { type: marker.type, content: [] };
+      entry.markers.push(group);
+    }
 
+    const label =
+      marker.label?.trim() ||
+      (marker.type === 'function' && marker.symbolName?.trim()
+        ? marker.symbolName.trim()
+        : marker.type === 'text' && marker.query?.trim()
+          ? marker.query.trim().length > 24
+            ? `${marker.query.trim().slice(0, 24)}…`
+            : marker.query.trim()
+          : defaultCursorLabel(marker.line));
+
+    const next: import('./types').FileMarkerItem = {
+      line: marker.line,
+      column: marker.column,
+      label,
+    };
+    if (marker.symbolName?.trim()) {
+      next.symbolName = marker.symbolName.trim();
+    }
+    if (marker.symbolKind !== undefined) {
+      next.symbolKind = marker.symbolKind;
+    }
+    if (marker.type === 'text') {
+      next.query = marker.query?.trim() || label;
+    }
+
+    group.content.push(next);
     await this.save();
     return true;
   }
 
-  async removeCursor(groupId: string, filePath: string, cursorIndex: number): Promise<boolean> {
+  async removeMarker(
+    groupId: string,
+    filePath: string,
+    markerType: import('./types').FileMarkerType,
+    contentIndex: number,
+  ): Promise<boolean> {
     const entry = this.getFileEntry(groupId, filePath);
-    if (!entry?.cursors || cursorIndex < 0 || cursorIndex >= entry.cursors.length) {
+    if (!entry?.markers) {
       return false;
     }
 
-    entry.cursors.splice(cursorIndex, 1);
-    if (entry.cursors.length === 0) {
-      delete entry.cursors;
+    const group = entry.markers.find((g) => g.type === markerType);
+    if (!group || contentIndex < 0 || contentIndex >= group.content.length) {
+      return false;
+    }
+
+    group.content.splice(contentIndex, 1);
+    if (group.content.length === 0) {
+      entry.markers = entry.markers.filter((g) => g.type !== markerType);
+    }
+    if (entry.markers.length === 0) {
+      delete entry.markers;
     }
 
     await this.save();
     return true;
   }
 
-  async renameCursor(
+  async renameMarker(
     groupId: string,
     filePath: string,
-    cursorIndex: number,
+    markerType: import('./types').FileMarkerType,
+    contentIndex: number,
     label: string,
   ): Promise<boolean> {
     const entry = this.getFileEntry(groupId, filePath);
-    if (!entry?.cursors || cursorIndex < 0 || cursorIndex >= entry.cursors.length) {
+    const group = entry?.markers?.find((g) => g.type === markerType);
+    if (!group || contentIndex < 0 || contentIndex >= group.content.length) {
       return false;
     }
 
@@ -447,9 +496,33 @@ export class TabGroupsManager {
       return false;
     }
 
-    entry.cursors[cursorIndex].label = trimmed;
+    group.content[contentIndex].label = trimmed;
     await this.save();
     return true;
+  }
+
+  /** @deprecated */
+  async addCursor(
+    groupId: string,
+    filePath: string,
+    cursor: { line: number; column: number; label?: string },
+  ): Promise<boolean> {
+    return this.addMarker(groupId, filePath, { type: 'cursor', ...cursor });
+  }
+
+  /** @deprecated */
+  async removeCursor(groupId: string, filePath: string, cursorIndex: number): Promise<boolean> {
+    return this.removeMarker(groupId, filePath, 'cursor', cursorIndex);
+  }
+
+  /** @deprecated */
+  async renameCursor(
+    groupId: string,
+    filePath: string,
+    cursorIndex: number,
+    label: string,
+  ): Promise<boolean> {
+    return this.renameMarker(groupId, filePath, 'cursor', cursorIndex, label);
   }
 
   getGroupsContainingFile(filePath: string): Group[] {

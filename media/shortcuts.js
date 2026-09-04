@@ -8,6 +8,8 @@
     createGroup: 'ctrl+shift+u',
     deleteGroup: 'ctrl+shift+p',
     addCursor: 'ctrl+shift+l',
+    addFunction: 'ctrl+shift+;',
+    addText: "ctrl+shift+'",
     prevCursor: 'ctrl+shift+[',
     nextCursor: 'ctrl+shift+]',
   };
@@ -59,6 +61,12 @@
     }
     if (key === '}' || key === ']') {
       return ']';
+    }
+    if (key === ':' || key === ';') {
+      return ';';
+    }
+    if (key === '"' || key === "'") {
+      return "'";
     }
     if (key.length === 1) {
       return key.toLowerCase();

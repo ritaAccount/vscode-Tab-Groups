@@ -318,3 +318,34 @@ media/shortcuts.js        # 按键捕获逻辑
 **涉及文件**：`types.ts`、`fileEntryUtils.ts`、`fileLocationUtils.ts`、`tabGroupsManager.ts`、`treeProvider.ts`、`commands.ts`、`shortcutUtils.ts`、`settingsWebview.ts`、`package.json`、`media/*`
 
 ---
+
+### v1.1.4 实现记录 — markers 统一书签（2026-09）
+
+| 项 | 决策 |
+|----|------|
+| 存储（修订后） | `markers: [{ type, content: [{ line, column, label, ... }] }]`；schema 仍为 `1.4.0`（覆盖示例，不升版） |
+| type | `cursor` \| `function` \| `text`（字符匹配 / 模糊定位） |
+| content 字段 | 公共：`line`/`column`/`label`；`function` 另有 `symbolName`/`symbolKind`；`text` 另有 `query` |
+| 迁移 | 旧扁平 `markers[{type,line,...}]`、`cursors[]`、单点 line → 分组 `content[]` |
+| 树 | 文件 → 类型组（游标/函数/匹配）→ 标记；`MarkerTypeTreeItem` + `MarkerTreeItem`；删/重命名按 `type + contentIndex` |
+| 添加 | `addCursor` / `addFunction` / `addText`（选区或词 → query，跳转含模糊子序列） |
+| 上一/下一 | 展平全部 content 后按 line 循环 |
+| 跳转提示 | 独立 `StatusBarItem`；设置页「显示」可配：一直显示（默认）/ 显示秒数 / 关闭（`tabGroups.display`） |
+| 快捷键 | `addText` 默认 `ctrl+shift+'` |
+
+**涉及文件**：`types.ts`、`displaySettingsUtils.ts`、`fileEntryUtils.ts`、`fileLocationUtils.ts`、`extension.ts`、`tabGroupsManager.ts`、`treeProvider.ts`、`commands.ts`、`shortcutUtils.ts`、`settingsWebview.ts`、`package.json`、`media/settings.*`、`media/shortcuts.*`、`version-backup.json`、`README.md`、`developer-readme.md`
+
+---
+
+### 显示配置 — 标记左下角提示（2026-09）
+
+| 项 | 决策 |
+|----|------|
+| 设置页 | 左侧分类「显示」；三页统一 Setting Row（左文右控，`pane-inner` max-width） |
+| 交互 | 下拉选模式；仅 `timed` 时出现「显示时长」行；**改完即存**；恢复默认立即写回 |
+| 项 | 「标记左下角显示」：一直显示 / 显示秒数 / 关闭 |
+| 默认 | `always`（一直显示） |
+| 存储 | 工作区 `.vscode/settings.json` → `tabGroups.display` |
+| 实现 | `displaySettingsUtils.ts`；跳转读配置；保存 `off` 时立即隐藏状态栏项 |
+
+---
