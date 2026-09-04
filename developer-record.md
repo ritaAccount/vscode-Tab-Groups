@@ -349,3 +349,35 @@ media/shortcuts.js        # 按键捕获逻辑
 | 实现 | `displaySettingsUtils.ts`；跳转读配置；保存 `off` 时立即隐藏状态栏项 |
 
 ---
+
+### 示例目录补全（2026-09）
+
+| 项 | 决策 |
+|----|------|
+| 目的 | `example/` 对照安装/激活后产生的配置，便于对照字段，不作为运行时读取路径 |
+| 文件 | `explain.md`（路径对照 + 字段说明）；`tab-groups.json`（schema 1.4.0 完整示例）；`settings.json`（shortcuts + display 默认值）；`keybindings.json`（扩展写入用户 keybindings 的条目） |
+| 与 bk | `tab-groups.json` 内容对齐 `version-backup.json` 的 `1.4.0`，不另升 schema |
+
+**涉及文件**：`example/*`、`developer-readme.md`、`README.md`
+
+---
+
+### 源码按功能分目录（2026-09）
+
+纯重构，不改产品行为。`src/` 由平铺改为功能目录；`extension.ts` 留在 `src/` 根，避免改 `package.json` 的 `main`。
+
+| 目录 | 职责 | 文件 |
+|------|------|------|
+| `src/` | 扩展入口 | `extension.ts` |
+| `src/data/` | 类型、JSON 持久化、文件条目 / 嵌套分组 | `types.ts`、`tabGroupsManager.ts`、`fileEntryUtils.ts`、`groupHierarchyUtils.ts` |
+| `src/workspace/` | 单根工作区与文件存在性缓存 | `workspaceUtils.ts`、`fileExistenceCache.ts` |
+| `src/tree/` | 侧边栏树、命令、批量打开/关闭、标记跳转 | `treeProvider.ts`、`commands.ts`、`groupEditorUtils.ts`、`fileLocationUtils.ts` |
+| `src/settings/` | 设置页、快捷键、显示配置 | `settingsWebview.ts`、`shortcutUtils.ts`、`displaySettingsUtils.ts` |
+
+历史记录中的旧路径（如 `src/treeProvider.ts`）保持原样，指当时文件位置。目录约定见 `src/explain.md`。
+
+**`explain.md` 同步（同日补充）**：改某个文件夹里的文件时，若该文件夹已有 `explain.md`，必须更新到与现状一致；改 `src/` 划分时还要更新 `src/explain.md`。没有则不必强行新建；新建功能文件夹时一并写上。
+
+**涉及文件**：`src/explain.md`、`src/**`、`developer-readme.md`、`.cursor/rules/tab-groups.mdc`、`.cursor/rules/docs-maintenance.mdc`、`CLAUDE.md`、`AGENTS.md`
+
+---

@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { GroupFileEntry } from './types';
-import { fileExistenceCache } from './fileExistenceCache';
+import { GroupFileEntry } from '../data/types';
+import { fileExistenceCache } from '../workspace/fileExistenceCache';
 import { openFileEntry } from './fileLocationUtils';
-import { toRelativePath } from './workspaceUtils';
+import { toRelativePath } from '../workspace/workspaceUtils';
 
 export async function openGroupFiles(entries: GroupFileEntry[]): Promise<{ opened: number; skipped: number }> {
   let opened = 0;

@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
-import { FileMarkerItem, FileMarkerType, FlatFileMarker, GroupFileEntry } from './types';
-import { flattenMarkers, markerTypeLabel } from './fileEntryUtils';
-import { getDisplaySettings } from './displaySettingsUtils';
-import { toAbsoluteUri, toRelativePath } from './workspaceUtils';
+import { FileMarkerItem, FileMarkerType, FlatFileMarker, GroupFileEntry } from '../data/types';
+import { flattenMarkers, markerTypeLabel } from '../data/fileEntryUtils';
+import { getDisplaySettings } from '../settings/displaySettingsUtils';
+import { toAbsoluteUri, toRelativePath } from '../workspace/workspaceUtils';
 
 let jumpHintItem: vscode.StatusBarItem | undefined;
 let jumpHintTimer: ReturnType<typeof setTimeout> | undefined;

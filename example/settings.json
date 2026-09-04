@@ -1,0 +1,17 @@
+{
+  "tabGroups.shortcuts": {
+    "addToGroup": "ctrl+shift+i",
+    "removeFromGroup": "ctrl+shift+o",
+    "createGroup": "ctrl+shift+u",
+    "deleteGroup": "ctrl+shift+p",
+    "addCursor": "ctrl+shift+l",
+    "addFunction": "ctrl+shift+;",
+    "addText": "ctrl+shift+'",
+    "prevCursor": "ctrl+shift+[",
+    "nextCursor": "ctrl+shift+]"
+  },
+  "tabGroups.display": {
+    "markerJumpHintMode": "always",
+    "markerJumpHintSeconds": 1
+  }
+}

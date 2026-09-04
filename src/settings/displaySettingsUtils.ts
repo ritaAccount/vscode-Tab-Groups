@@ -3,7 +3,7 @@ import {
   DEFAULT_DISPLAY_SETTINGS,
   DisplaySettings,
   MarkerJumpHintMode,
-} from './types';
+} from '../data/types';
 
 const CONFIG_KEY = 'display';
 const SECTION = 'tabGroups';

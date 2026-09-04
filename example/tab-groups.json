@@ -1,0 +1,90 @@
+{
+  "version": "1.4.0",
+  "groups": [
+    {
+      "id": "group-1",
+      "name": "我的手动分组",
+      "level": 0,
+      "children": ["group-1a"],
+      "files": [
+        {
+          "path": "src/index.ts",
+          "alias": "入口",
+          "markers": [
+            {
+              "type": "cursor",
+              "content": [
+                { "line": 41, "column": 0, "label": "L42" },
+                { "line": 18, "column": 42, "label": "的" }
+              ]
+            },
+            {
+              "type": "function",
+              "content": [
+                {
+                  "line": 80,
+                  "column": 2,
+                  "label": "init",
+                  "symbolName": "init",
+                  "symbolKind": 11
+                }
+              ]
+            },
+            {
+              "type": "text",
+              "content": [
+                {
+                  "line": 120,
+                  "column": 4,
+                  "label": "listStale",
+                  "query": "listStale"
+                }
+              ]
+            }
+          ]
+        },
+        { "path": "src/utils.ts", "alias": "utils.ts" }
+      ]
+    },
+    {
+      "id": "group-1a",
+      "name": "子分组",
+      "level": 1,
+      "children": [],
+      "files": [
+        { "path": "src/helper.ts", "alias": "helper.ts" }
+      ]
+    },
+    {
+      "id": "group-2",
+      "name": "后端逻辑",
+      "level": 0,
+      "children": [],
+      "files": [
+        { "path": "server.js", "alias": "server.js" }
+      ],
+      "configId": "backend-regex"
+    },
+    {
+      "id": "group-3",
+      "name": "前端组件",
+      "level": 0,
+      "children": [],
+      "files": [
+        { "path": "components/Button.tsx", "alias": "Button.tsx" }
+      ],
+      "config": {
+        "type": "regex",
+        "regex": ".*/components/.*\\.tsx$"
+      }
+    }
+  ],
+  "configs": [
+    {
+      "id": "backend-regex",
+      "type": "regex",
+      "regex": ".*/server/.*\\.js$",
+      "description": "后端 JS 文件"
+    }
+  ]
+}

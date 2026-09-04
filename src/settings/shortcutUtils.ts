@@ -8,8 +8,8 @@ import {
   SHORTCUT_COMMANDS,
   SHORTCUT_WHEN,
   ShortcutSettings,
-} from './types';
-import { getWorkspaceFolder } from './workspaceUtils';
+} from '../data/types';
+import { getWorkspaceFolder } from '../workspace/workspaceUtils';
 
 interface KeybindingEntry {
   key: string;

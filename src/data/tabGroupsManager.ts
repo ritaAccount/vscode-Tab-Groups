@@ -34,7 +34,7 @@ import {
   RegexConfig,
   TabGroupsData,
 } from './types';
-import { getWorkspaceFolder } from './workspaceUtils';
+import { getWorkspaceFolder } from '../workspace/workspaceUtils';
 
 const DEFAULT_MANUAL_CONFIG: ManualConfig = { type: 'manual' };
 

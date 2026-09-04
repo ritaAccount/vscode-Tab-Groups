@@ -1,0 +1,47 @@
+[
+  {
+    "key": "ctrl+shift+i",
+    "command": "tabGroups.addToGroup",
+    "when": "workspaceFolderCount == 1 && resourceScheme == file"
+  },
+  {
+    "key": "ctrl+shift+o",
+    "command": "tabGroups.removeFromGroup",
+    "when": "workspaceFolderCount == 1 && resourceScheme == file"
+  },
+  {
+    "key": "ctrl+shift+u",
+    "command": "tabGroups.createGroup",
+    "when": "workspaceFolderCount == 1"
+  },
+  {
+    "key": "ctrl+shift+p",
+    "command": "tabGroups.deleteGroup",
+    "when": "workspaceFolderCount == 1"
+  },
+  {
+    "key": "ctrl+shift+l",
+    "command": "tabGroups.addCursor",
+    "when": "workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus"
+  },
+  {
+    "key": "ctrl+shift+;",
+    "command": "tabGroups.addFunction",
+    "when": "workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus"
+  },
+  {
+    "key": "ctrl+shift+'",
+    "command": "tabGroups.addText",
+    "when": "workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus"
+  },
+  {
+    "key": "ctrl+shift+[",
+    "command": "tabGroups.prevCursor",
+    "when": "workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus"
+  },
+  {
+    "key": "ctrl+shift+]",
+    "command": "tabGroups.nextCursor",
+    "when": "workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus"
+  }
+]

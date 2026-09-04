@@ -1,21 +1,21 @@
 import * as vscode from 'vscode';
-import { CONFIG_VERSION } from './fileEntryUtils';
+import { CONFIG_VERSION } from '../data/fileEntryUtils';
 import {
   ensureWorkspaceDisplaySettings,
   getDisplaySettings,
   saveDisplaySettings,
 } from './displaySettingsUtils';
-import { TabGroupsManager } from './tabGroupsManager';
+import { TabGroupsManager } from '../data/tabGroupsManager';
 import {
   CONFIG_RELATIVE_PATH,
   DEFAULT_DISPLAY_SETTINGS,
   DEFAULT_SHORTCUTS,
   DisplaySettings,
   ShortcutSettings,
-} from './types';
+} from '../data/types';
 import { ensureWorkspaceShortcutSettings, getShortcuts, saveShortcuts } from './shortcutUtils';
-import { applyMarkerJumpHintVisibility } from './fileLocationUtils';
-import { getWorkspaceFolder, getWorkspaceInvalidMessage, isValidWorkspace } from './workspaceUtils';
+import { applyMarkerJumpHintVisibility } from '../tree/fileLocationUtils';
+import { getWorkspaceFolder, getWorkspaceInvalidMessage, isValidWorkspace } from '../workspace/workspaceUtils';
 
 let panel: vscode.WebviewPanel | undefined;
 let settingsManager: TabGroupsManager | undefined;

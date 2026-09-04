@@ -1,9 +1,9 @@
 import * as vscode from 'vscode';
-import { FileMarkerType, FlatFileMarker, Group, GroupFileEntry } from './types';
-import { TabGroupsManager } from './tabGroupsManager';
-import { countMarkers, formatFileEntryDescription, markerTypeLabel } from './fileEntryUtils';
-import { fileExistenceCache } from './fileExistenceCache';
-import { isValidWorkspace, toAbsoluteUri } from './workspaceUtils';
+import { FileMarkerType, FlatFileMarker, Group, GroupFileEntry } from '../data/types';
+import { TabGroupsManager } from '../data/tabGroupsManager';
+import { countMarkers, formatFileEntryDescription, markerTypeLabel } from '../data/fileEntryUtils';
+import { fileExistenceCache } from '../workspace/fileExistenceCache';
+import { isValidWorkspace, toAbsoluteUri } from '../workspace/workspaceUtils';
 
 /** 树中标记类型组的固定顺序 */
 const MARKER_TYPE_ORDER: FileMarkerType[] = ['cursor', 'function', 'text'];

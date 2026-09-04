@@ -1,17 +1,17 @@
 import * as vscode from 'vscode';
-import { registerCommands } from './commands';
-import { fileExistenceCache } from './fileExistenceCache';
-import { ensureWorkspaceShortcutSettings, syncKeybindingsFromSettings } from './shortcutUtils';
-import { initializeShortcutSettings, registerSettingsCommands } from './settingsWebview';
-import { TabGroupsManager } from './tabGroupsManager';
-import { GroupTreeItem, TabGroupsTreeProvider } from './treeProvider';
-import { CONFIG_RELATIVE_PATH } from './types';
-import { registerMarkerJumpHint } from './fileLocationUtils';
-import { getWorkspaceInvalidMessage, isValidWorkspace, toRelativePath } from './workspaceUtils';
+import { registerCommands } from './tree/commands';
+import { fileExistenceCache } from './workspace/fileExistenceCache';
+import { ensureWorkspaceShortcutSettings, syncKeybindingsFromSettings } from './settings/shortcutUtils';
+import { initializeShortcutSettings, registerSettingsCommands } from './settings/settingsWebview';
+import { TabGroupsManager } from './data/tabGroupsManager';
+import { GroupTreeItem, TabGroupsTreeProvider } from './tree/treeProvider';
+import { CONFIG_RELATIVE_PATH } from './data/types';
+import { registerMarkerJumpHint } from './tree/fileLocationUtils';
+import { getWorkspaceInvalidMessage, isValidWorkspace, toRelativePath } from './workspace/workspaceUtils';
 
 let manager: TabGroupsManager | undefined;
 let treeProvider: TabGroupsTreeProvider | undefined;
-let treeViewRef: vscode.TreeView<import('./treeProvider').TreeElement> | undefined;
+let treeViewRef: vscode.TreeView<import('./tree/treeProvider').TreeElement> | undefined;
 let configWatcher: vscode.FileSystemWatcher | undefined;
 let workspaceFileWatcher: vscode.FileSystemWatcher | undefined;
 let isReloadingFromDisk = false;

@@ -1,6 +1,7 @@
 # VSCode 标签分组插件 - 开发文档（基于最新配置模型）
 
 ## 1. 概述
+
 **插件名称**：Tab Groups  
 **扩展标识**：`Rita.tab-groups`（Publisher: `Rita`，package name: `tab-groups`）  
 **功能**：允许用户将 VSCode 中打开或未打开的文件组织成逻辑分组，支持手动添加和基于正则的自动扫描。分组配置可内嵌于分组，也可定义为全局配置供多个分组复用。v2 起支持可自定义快捷键（Webview 录入、工作区配置、同步至用户 keybindings）。
@@ -10,7 +11,9 @@
 ---
 
 ## 2. 数据结构设计（JSON Schema）
+
 存储路径：`<workspaceRoot>/.vscode/tab-groups.json`
+
 ```typescript
 // 基础配置类型
 interface BaseConfig {
@@ -51,6 +54,7 @@ interface TabGroupsData {
 ```
 
 **解析规则**：
+
 - 如果 `group.config` 存在 → 使用内嵌配置
 - 否则如果 `group.configId` 存在 → 在 `configs` 中查找匹配的全局配置
 - 否则 → 视为 `{ type: "manual" }`（默认手动分组）
@@ -76,20 +80,30 @@ interface ShortcutSettings {
 ```
 
 **解析与同步规则**：
+
 - 激活扩展时，若工作区无 `tabGroups.shortcuts`，写入 `DEFAULT_SHORTCUTS` 至 `.vscode/settings.json`
 - 保存自定义快捷键时，校验格式后更新工作区配置，并**同步至用户** `keybindings.json`（VS Code 不支持工作区级 keybindings 文件）
 - 实际生效的按键绑定在用户 keybindings 中；工作区 settings 为配置来源，可随项目提交
 
 ---
 
+
+
 ## 3. 用户界面与交互
 
+
+
 ### 3.1 活动栏（Activity Bar）
+
 - 图标：`$(list-selection)`（内置 codicon）
 - 点击后打开侧边栏视图
 
+
+
 ### 3.2 侧边栏树视图
+
 **结构**：
+
 ```
 📁 我的手动分组（手动）        <-- 分组节点，括号内显示配置类型
    📄 src/index.ts
@@ -101,15 +115,18 @@ interface ShortcutSettings {
 ```
 
 **侧边栏标题栏（view/title）**：
+
 - 新建分组（需单根工作区，创建**根级**分组）
 - **设置**（始终显示，无工作区限制；打开设置页，含「通用」「快捷键」；保存快捷键/打开配置文件时需单根工作区）
 
 **分组节点 inline 按钮（＋）**：
+
 - 仅分组节点显示（`viewItem == group || groupRegex`）
 - 点击后在当前分组下**新建子分组**（`tabGroups.createSubGroup`）
 - 顶栏「＋」与快捷键 `ctrl+shift+u` 仍创建**根级**分组（`tabGroups.createGroup`）
 
 **分组节点右键菜单**（仅作用于当前分组，不在插件顶栏提供）：
+
 - 删除分组
 - 重命名分组
 - **新建子分组**
@@ -124,6 +141,7 @@ interface ShortcutSettings {
 > **注意**：「展开/折叠分组」指的是**编辑器标签页**的批量打开/关闭，**不是**侧边栏树节点的展开/折叠。树节点仍可通过点击分组名称旁的箭头手动展开/折叠以查看文件列表。
 
 **文件节点右键菜单**：
+
 - 打开文件（跳转展平后的首个标记，无标记则打开文件开头）
 - 从分组中移除
 - 重命名
@@ -131,14 +149,20 @@ interface ShortcutSettings {
 - 复制路径
 
 **标记子节点**（文件 → 类型组 → 标记）：
+
 - 文件下先展示非空类型组：**游标** / **函数** / **匹配**（旁注条数）
 - 组内为具体标记；单击按 type 跳转（函数优先符号名；字符匹配按 `query` 模糊定位；失败回退坐标）
 - 跳转成功后左下角用独立 `StatusBarItem` 显示「类型：名称」；行为由 `tabGroups.display.markerJumpHintMode` 控制（`always` / `timed`+秒数 / `off`）
 - 右键标记：**删除标记**、**重命名标记**
 
+
+
 ### 3.3 编辑器标签右键菜单
+
 - **加入分组** → 弹出快速选择，列出所有分组（显示分组名），选择后当前文件路径加入该分组的 `files` 数组（去重）。
 - **取消分组** → 弹出快速选择，首项为 **全部分组**（v2，一次性从所有包含该文件的分组中移除）；其余项为当前文件所属的分组，选择后从该分组中移除。
+
+
 
 ### 3.4 设置页 Webview（左分类 + 右内容）
 
@@ -157,74 +181,98 @@ interface ShortcutSettings {
 
 **默认快捷键**：
 
-| 命令 | 默认按键 | `when` 条件 |
-|------|----------|-------------|
-| 加入分组 | `ctrl+shift+i` | `workspaceFolderCount == 1 && resourceScheme == file` |
-| 取消分组 | `ctrl+shift+o` | 同上 |
-| 新建分组 | `ctrl+shift+u` | `workspaceFolderCount == 1` |
-| 删除分组 | `ctrl+shift+p` | 同上 |
-| 添加游标 | `ctrl+shift+l` | `workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus` |
-| 添加函数 | `ctrl+shift+;` | 同上 |
-| 添加字符匹配 | `ctrl+shift+'` | 同上 |
-| 上一标记 | `ctrl+shift+[` | 同上 |
-| 下一标记 | `ctrl+shift+]` | 同上 |
+
+| 命令     | 默认按键           | `when` 条件                                                                |
+| ------ | -------------- | ------------------------------------------------------------------------ |
+| 加入分组   | `ctrl+shift+i` | `workspaceFolderCount == 1 && resourceScheme == file`                    |
+| 取消分组   | `ctrl+shift+o` | 同上                                                                       |
+| 新建分组   | `ctrl+shift+u` | `workspaceFolderCount == 1`                                              |
+| 删除分组   | `ctrl+shift+p` | 同上                                                                       |
+| 添加游标   | `ctrl+shift+l` | `workspaceFolderCount == 1 && resourceScheme == file && editorTextFocus` |
+| 添加函数   | `ctrl+shift+;` | 同上                                                                       |
+| 添加字符匹配 | `ctrl+shift+'` | 同上                                                                       |
+| 上一标记   | `ctrl+shift+[` | 同上                                                                       |
+| 下一标记   | `ctrl+shift+]` | 同上                                                                       |
+
 
 ---
 
+
+
 ## 4. 核心功能详解
 
+
+
 ### 4.1 分组管理
-| 操作 | 实现说明 |
-|------|----------|
-| 新建分组 | 弹出输入框获取名称，生成新 `id`，创建空 `files` 数组，默认无 config 和 configId（即手动分组）。保存 JSON。支持快捷键触发（v2）。 |
-| 删除分组 | 从 `groups` 中移除；若该分组引用的全局配置不再被任何分组使用，**弹窗询问**是否一并删除该全局配置。快捷键触发时，若侧边栏未选中分组，弹出 QuickPick 选择目标分组（v2）。 |
-| 重命名 | 直接修改 `group.name`。 |
-| 展开分组 | 遍历该分组 `files`，调用 `vscode.window.showTextDocument` 依次打开；跳过不存在或无法打开的文件；非最后一个文件使用 `preserveFocus: true` 在后台打开。 |
+
+
+| 操作   | 实现说明                                                                                                                             |
+| ---- | -------------------------------------------------------------------------------------------------------------------------------- |
+| 新建分组 | 弹出输入框获取名称，生成新 `id`，创建空 `files` 数组，默认无 config 和 configId（即手动分组）。保存 JSON。支持快捷键触发（v2）。                                              |
+| 删除分组 | 从 `groups` 中移除；若该分组引用的全局配置不再被任何分组使用，**弹窗询问**是否一并删除该全局配置。快捷键触发时，若侧边栏未选中分组，弹出 QuickPick 选择目标分组（v2）。                                |
+| 重命名  | 直接修改 `group.name`。                                                                                                               |
+| 展开分组 | 遍历该分组 `files`，调用 `vscode.window.showTextDocument` 依次打开；跳过不存在或无法打开的文件；非最后一个文件使用 `preserveFocus: true` 在后台打开。                      |
 | 折叠分组 | 遍历 `vscode.window.tabGroups.all`，匹配属于该分组相对路径的标签页（含 `TabInputText` / `TabInputTextDiff`），调用 `vscode.window.tabGroups.close` 批量关闭。 |
 
+
+
+
 ### 4.2 配置管理
-| 场景 | 行为 |
-|------|------|
-| 设置为手动 | 删除 `group.config` 和 `group.configId`（即无配置）。 |
-| 设置正则（内嵌） | 弹出输入框输入正则，设置 `group.config = { type: "regex", regex: "..." }`，删除 `configId`。 |
-| 引用全局配置 | 弹出快速选择列表（来自 `configs` 数组），选择后设置 `group.configId = selectedId`，删除 `group.config`。如果无可用全局配置，提示先创建。 |
-| 管理全局配置 | 直接打开 `.vscode/tab-groups.json`，并滚动定位到 `configs` 区域，供用户手动编辑 JSON（v1 不提供增删改 UI）。 |
+
+
+| 场景        | 行为                                                                                                    |
+| --------- | ----------------------------------------------------------------------------------------------------- |
+| 设置为手动     | 删除 `group.config` 和 `group.configId`（即无配置）。                                                           |
+| 设置正则（内嵌）  | 弹出输入框输入正则，设置 `group.config = { type: "regex", regex: "..." }`，删除 `configId`。                          |
+| 引用全局配置    | 弹出快速选择列表（来自 `configs` 数组），选择后设置 `group.configId = selectedId`，删除 `group.config`。如果无可用全局配置，提示先创建。      |
+| 管理全局配置    | 直接打开 `.vscode/tab-groups.json`，并滚动定位到 `configs` 区域，供用户手动编辑 JSON（v1 不提供增删改 UI）。                        |
 | 从正则配置扫描文件 | 获取分组有效正则（内嵌或引用），调用 `vscode.workspace.findFiles('**/*')`，过滤匹配的文件路径，更新 `group.files`（**覆盖**原有列表）。显示进度条。 |
 
+
+
+
 ### 4.3 文件操作
+
 - **加入分组**：将当前活动标签的 URI 转换为相对路径，添加到目标分组的 `files` 数组（避免重复）。
-- **添加游标 / 函数 / 字符匹配**：写入 `markers: [{ type, content: [...] }]`（`cursor` \| `function` \| `text`）；单击文件打开跳展平后首个标记；上一/下一标记按行循环跳转；上述跳转均会短暂提示标记名称。
+- **添加游标 / 函数 / 字符匹配**：写入 `markers: [{ type, content: [...] }]`（`cursor`  `function`  `text`）；单击文件打开跳展平后首个标记；上一/下一标记按行循环跳转；上述跳转均会短暂提示标记名称。
 - **取消分组**：从指定分组的 `files` 中移除该路径；选 **全部分组** 时调用 `removeFileFromAllGroups()` 一次性移除（v2）。
 - **单击树视图文件**：调用 `vscode.window.showTextDocument` 打开。
 - **关闭标签不影响分组**：分组中的文件路径不会因为标签关闭而删除。用户必须显式取消分组或从树视图右键移除。
 
+
+
 ### 4.4 拖放操作（v1.1.1）
 
-| 拖放类型 | 行为 |
-|----------|------|
-| 文件 → 分组 | 从源分组 `files` 移除，加入目标分组（保留 `alias`）；目标已有同路径则仅移除源项；支持多选 |
+
+| 拖放类型    | 行为                                                                             |
+| ------- | ------------------------------------------------------------------------------ |
+| 文件 → 分组 | 从源分组 `files` 移除，加入目标分组（保留 `alias`）；目标已有同路径则仅移除源项；支持多选                          |
 | 分组 → 分组 | 整棵子树 reparent 到目标分组下（含子孙组与组内文件）；从旧父 `children` 移除并加入新父 `children`，递归更新 `level` |
-| 无效放置 | 拖入自身、拖入自身子孙、已是目标直接子组 → 无操作 |
-| 放置目标 | 分组节点，或分组内文件节点（解析为所属分组） |
+| 无效放置    | 拖入自身、拖入自身子孙、已是目标直接子组 → 无操作                                                     |
+| 放置目标    | 分组节点，或分组内文件节点（解析为所属分组）                                                         |
+
 
 **实现**：`application/vnd.code.tree.tabGroupsView`（分组，MIME 与 view id 大小写一致）+ `application/vnd.tabgroups.file`（文件对象 payload）；文件节点设 `resourceUri` 以启用拖放，但不写入 `text/uri-list`
 
-**实现文件**：`src/treeProvider.ts`（`TreeDragAndDropController`）、`src/tabGroupsManager.ts`（`moveFilesToGroup` / `moveGroupToParent`）、`src/groupHierarchyUtils.ts`（`updateGroupLevels` / `isDescendantOf`）
+**实现文件**：`src/tree/treeProvider.ts`（`TreeDragAndDropController`）、`src/data/tabGroupsManager.ts`（`moveFilesToGroup` / `moveGroupToParent`）、`src/data/groupHierarchyUtils.ts`（`updateGroupLevels` / `isDescendantOf`）
 
 ### 4.5 快捷键管理（v2）
 
-| 场景 | 行为 |
-|------|------|
-| 打开设置页 | `tabGroups.openSettings`，左分类右内容；默认选中「通用」 |
-| 录入快捷键 | Webview 内按键捕获，格式校验（修饰键 + 主键） |
-| 保存 | `workspace.getConfiguration().update('tabGroups.shortcuts', …, Workspace)` + `syncKeybindingsFromSettings()` |
-| 激活时初始化 | `ensureWorkspaceShortcutSettings()`：补全缺失的工作区配置项 |
-| keybindings 同步 | 读取用户 keybindings.json（JSONC 解析），移除本扩展五条旧绑定，写入新绑定 |
-| 冲突检测 | 不做（v2 定稿） |
 
-**实现文件**：`src/shortcutUtils.ts`、`src/settingsWebview.ts`、`media/settings.*`、`media/shortcuts.*`
+| 场景             | 行为                                                                                                           |
+| -------------- | ------------------------------------------------------------------------------------------------------------ |
+| 打开设置页          | `tabGroups.openSettings`，左分类右内容；默认选中「通用」                                                                     |
+| 录入快捷键          | Webview 内按键捕获，格式校验（修饰键 + 主键）                                                                                 |
+| 保存             | `workspace.getConfiguration().update('tabGroups.shortcuts', …, Workspace)` + `syncKeybindingsFromSettings()` |
+| 激活时初始化         | `ensureWorkspaceShortcutSettings()`：补全缺失的工作区配置项                                                              |
+| keybindings 同步 | 读取用户 keybindings.json（JSONC 解析），移除本扩展五条旧绑定，写入新绑定                                                             |
+| 冲突检测           | 不做（v2 定稿）                                                                                                    |
+
+
+**实现文件**：`src/settings/shortcutUtils.ts`、`src/settings/settingsWebview.ts`、`media/settings.`*、`media/shortcuts.*`
 
 ### 4.6 数据持久化与同步
+
 - 任何修改（增删改分组、文件、配置）都立即写回 JSON 文件。
 - 启动插件时读取 JSON 文件，若文件不存在则创建空结构 `{ groups: [], configs: [] }`。
 - **外部修改自动重载（v1 已实现）**：
@@ -234,28 +282,34 @@ interface ShortcutSettings {
 
 ---
 
+
+
 ## 5. VSCode API 使用清单
 
-| 用途 | API |
-|------|-----|
-| 注册命令 | `vscode.commands.registerCommand` |
-| 树视图 | `vscode.window.createTreeView` + `TreeDataProvider` |
-| 右键菜单贡献 | `package.json` 的 `contributes.menus` |
-| 快速选择 | `vscode.window.showQuickPick` |
-| 输入框 | `vscode.window.showInputBox` |
-| 获取当前文件 URI | `vscode.window.activeTextEditor.document.uri` |
-| 打开/关闭组内文件 | `vscode.window.showTextDocument` / `vscode.window.tabGroups.close` |
-| 遍历工作区文件 | `vscode.workspace.findFiles` |
-| 文件读写 | `vscode.workspace.fs` 或 Node.js `fs` (需 `@types/node`) |
-| 进度条 | `vscode.window.withProgress` |
-| 工作区事件 | `vscode.workspace.onDidChangeWorkspaceFolders` |
-| 状态栏消息 | `vscode.window.setStatusBarMessage`（一般操作反馈） |
-| 标记跳转提示 | 独立 `StatusBarItem`（`registerMarkerJumpHint` / `showMarkerJumpHint`）；配置见 `tabGroups.display` |
-| 工作区配置 | `vscode.workspace.getConfiguration` / `ConfigurationTarget.Workspace` |
-| Webview 面板 | `vscode.window.createWebviewPanel` |
-| 用户 keybindings 读写 | Node.js `fs` + JSONC 简易解析 |
+
+| 用途                | API                                                                                         |
+| ----------------- | ------------------------------------------------------------------------------------------- |
+| 注册命令              | `vscode.commands.registerCommand`                                                           |
+| 树视图               | `vscode.window.createTreeView` + `TreeDataProvider`                                         |
+| 右键菜单贡献            | `package.json` 的 `contributes.menus`                                                        |
+| 快速选择              | `vscode.window.showQuickPick`                                                               |
+| 输入框               | `vscode.window.showInputBox`                                                                |
+| 获取当前文件 URI        | `vscode.window.activeTextEditor.document.uri`                                               |
+| 打开/关闭组内文件         | `vscode.window.showTextDocument` / `vscode.window.tabGroups.close`                          |
+| 遍历工作区文件           | `vscode.workspace.findFiles`                                                                |
+| 文件读写              | `vscode.workspace.fs` 或 Node.js `fs` (需 `@types/node`)                                      |
+| 进度条               | `vscode.window.withProgress`                                                                |
+| 工作区事件             | `vscode.workspace.onDidChangeWorkspaceFolders`                                              |
+| 状态栏消息             | `vscode.window.setStatusBarMessage`（一般操作反馈）                                                 |
+| 标记跳转提示            | 独立 `StatusBarItem`（`registerMarkerJumpHint` / `showMarkerJumpHint`）；配置见 `tabGroups.display` |
+| 工作区配置             | `vscode.workspace.getConfiguration` / `ConfigurationTarget.Workspace`                       |
+| Webview 面板        | `vscode.window.createWebviewPanel`                                                          |
+| 用户 keybindings 读写 | Node.js `fs` + JSONC 简易解析                                                                   |
+
 
 ---
+
+
 
 ## 6. 开发环境与语言
 
@@ -266,27 +320,53 @@ interface ShortcutSettings {
 - **界面语言**：中文
 - **项目路径**：仓库根目录（无子目录嵌套）
 
-**v2 新增源码**：
+**当前源码结构**（按功能分目录，规则见 `src/explain.md`；入口仍在 `src/extension.ts`，对应 `package.json` 的 `./out/extension.js`）：
 
 ```
-src/shortcutUtils.ts      # 快捷键配置读写、keybindings.json 同步
-src/settingsWebview.ts    # 设置页 Webview（左分类 + 右内容）
-media/settings.css
-media/settings.js
-media/shortcuts.css
-media/shortcuts.js        # 快捷键 pane：按键捕获逻辑
+src/
+├── explain.md                   # 目录规则（不参与编译）
+├── extension.ts                 # 激活、配置监听、工作区校验
+├── data/                        # 分组数据与持久化
+│   ├── types.ts
+│   ├── tabGroupsManager.ts
+│   ├── fileEntryUtils.ts        # CONFIG_VERSION、别名与 markers 迁移
+│   └── groupHierarchyUtils.ts
+├── workspace/                   # 工作区路径与文件存在性
+│   ├── workspaceUtils.ts
+│   └── fileExistenceCache.ts
+├── tree/                        # 侧边栏、命令、编辑器打开 / 标记跳转
+│   ├── treeProvider.ts
+│   ├── commands.ts
+│   ├── groupEditorUtils.ts
+│   └── fileLocationUtils.ts
+└── settings/                    # 设置页、快捷键、显示配置
+    ├── settingsWebview.ts
+    ├── shortcutUtils.ts
+    └── displaySettingsUtils.ts
+
+media/
+├── settings.css / settings.js
+└── shortcuts.css / shortcuts.js # 快捷键 pane：按键捕获
 ```
 
 ---
 
+
+
 ## 7. 实现步骤（MVP）
 
+
+
 ### 阶段 1：项目骨架
+
 - [x] 生成 VSCode 插件项目
 - [x] 配置 `package.json`：`activationEvents`、`contributes.viewsContainers`、`contributes.views`、`contributes.commands`、`contributes.menus`
-- [x] 创建 `src/types.ts` 定义接口
+- [x] 创建 `src/data/types.ts` 定义接口
+
+
 
 ### 阶段 2：数据管理模块
+
 - [x] 实现 `TabGroupsManager` 类：
   - `load()`、`save()`
   - `getGroups()`、`getConfigs()`
@@ -296,32 +376,50 @@ media/shortcuts.js        # 快捷键 pane：按键捕获逻辑
   - `createGlobalConfig(config)`、`deleteGlobalConfig(id)`
   - `getEffectiveConfig(group)` 返回解析后的配置对象
 
+
+
 ### 阶段 3：树视图实现
+
 - [x] 实现 `TreeDataProvider`：`getChildren`、`getTreeItem`、`getParent`
 - [x] 分组节点和文件节点使用不同 `TreeItem`，设置 `contextValue` 以便右键菜单区分
 - [x] 刷新方法：调用 `onDidChangeTreeData` 事件
 
+
+
 ### 阶段 4：命令实现
+
 - [x] 所有分组操作命令（新建、删除、重命名、展开/折叠）
 - [x] 标签页右键命令：`addToGroup`、`removeFromGroup`
 - [x] 树视图内右键命令：打开文件、从分组移除文件、扫描文件（正则分组）、设置配置等
 
+
+
 ### 阶段 5：正则扫描功能
+
 - [x] 实现 `scanGroupWithRegex(group)`：获取有效正则，调用 `findFiles`，过滤，更新 `group.files`
 
+
+
 ### 阶段 6：错误处理与优化
+
 - [x] 工作区未打开或多根时禁用功能并提示
 - [x] JSON 解析失败时的回退与提示
 - [x] 文件路径不存在时在树视图中灰显，且可右键移除
 - [x] 添加状态栏消息提示成功/失败
 - [x] 外部修改配置文件后自动重新加载
 
+
+
 ### 阶段 7：测试与打包
+
 - [ ] 编写单元测试（Mocha）
 - [ ] 本地 `vsce package` 生成 `.vsix` 并安装测试
 - [ ] 发布到 Marketplace
 
+
+
 ### 阶段 8：快捷键（v2）
+
 - [x] `tabGroups.openSettings` 命令与 `view/title`「设置」按钮（左分类右内容；「通用」「快捷键」）
 - [x] Webview 按键捕获与格式校验
 - [x] 工作区 `tabGroups.shortcuts` 读写与激活时默认值补全
@@ -331,6 +429,8 @@ media/shortcuts.js        # 快捷键 pane：按键捕获逻辑
 - [x] 删除分组快捷键无树选中时 QuickPick 选分组
 
 ---
+
+
 
 ## 8. 边界情况与注意事项
 
@@ -344,6 +444,8 @@ media/shortcuts.js        # 快捷键 pane：按键捕获逻辑
 
 ---
 
+
+
 ## 9. 后续迭代计划（v3）
 
 - **最近使用分组快捷键**：快速将当前文件加入最近使用的分组（v2 已实现基础四条快捷键，此项仍待做）
@@ -354,66 +456,28 @@ media/shortcuts.js        # 快捷键 pane：按键捕获逻辑
 
 ---
 
+
+
 ## 10. 附录：示例配置文件
 
-### tab-groups.json
+完整、带字段说明的示例见 **[example/](./example/)**（`explain.md` + 当前 schema 的 JSON）。
 
-```json
-{
-  "groups": [
-    {
-      "id": "group-1",
-      "name": "我的手动分组",
-      "files": ["src/index.ts", "src/utils.ts"]
-    },
-    {
-      "id": "group-2",
-      "name": "后端逻辑",
-      "files": ["server.js", "db.js"],
-      "configId": "backend-regex"
-    },
-    {
-      "id": "group-3",
-      "name": "前端组件",
-      "files": ["components/Button.tsx"],
-      "config": {
-        "type": "regex",
-        "regex": ".*/components/.*\\.tsx$"
-      }
-    }
-  ],
-  "configs": [
-    {
-      "id": "backend-regex",
-      "type": "regex",
-      "regex": ".*/server/.*\\.js$",
-      "description": "后端 JS 文件"
-    }
-  ]
-}
-```
 
-### settings.json（v2 快捷键片段）
+| 示例文件                       | 对应实际路径                                                                   |
+| -------------------------- | ------------------------------------------------------------------------ |
+| `example/tab-groups.json`  | 工作区 `.vscode/tab-groups.json`（schema `1.4.0`：嵌套分组、别名、`markers`）          |
+| `example/settings.json`    | 工作区 `.vscode/settings.json`（`tabGroups.shortcuts` + `tabGroups.display`） |
+| `example/keybindings.json` | 用户 `User/keybindings.json`（保存快捷键时同步，非工作区文件）                              |
 
-```json
-{
-  "tabGroups.shortcuts": {
-    "addToGroup": "ctrl+shift+i",
-    "removeFromGroup": "ctrl+shift+o",
-    "createGroup": "ctrl+shift+u",
-    "deleteGroup": "ctrl+shift+p",
-    "addCursor": "ctrl+shift+l",
-    "addFunction": "ctrl+shift+;",
-    "prevCursor": "ctrl+shift+[",
-    "nextCursor": "ctrl+shift+]"
-  }
-}
-```
 
 ---
+
+
 
 ## 11. 开发记录
 
 各版本的开发决策、歧义澄清与实现记录见 **[developer-record.md](./developer-record.md)**。
 
 面向普通用户的功能说明见 **[README.md](./README.md)**。
+
+安装后产生的配置对照示例见 **[example/](./example/)**。

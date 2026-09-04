@@ -1,16 +1,16 @@
 import * as vscode from 'vscode';
 import { closeGroupFiles, openGroupFiles } from './groupEditorUtils';
 import { getMatchingActiveEditor, openFileAtMarker, openFileEntry, resolveEnclosingFunctionSymbol, revealMarkerInEditor } from './fileLocationUtils';
-import { TabGroupsManager } from './tabGroupsManager';
+import { TabGroupsManager } from '../data/tabGroupsManager';
 import { FileTreeItem, GroupTreeItem, MarkerTreeItem, MarkerTypeTreeItem, TabGroupsTreeProvider } from './treeProvider';
-import { sortFlatMarkersByLine, flattenMarkers, countMarkers } from './fileEntryUtils';
+import { sortFlatMarkersByLine, flattenMarkers, countMarkers } from '../data/fileEntryUtils';
 
 type TabGroupsTreeElement = GroupTreeItem | FileTreeItem | MarkerTypeTreeItem | MarkerTreeItem;
 import {
   ensureValidWorkspace,
   toAbsoluteUri,
   toRelativePath,
-} from './workspaceUtils';
+} from '../workspace/workspaceUtils';
 
 export function registerCommands(
   context: vscode.ExtensionContext,
